@@ -20,3 +20,4 @@ target/
 
 # Don't ignore this file itself
 !.gitignore
+!.github/
