@@ -1,0 +1,121 @@
+<html>
+<head>
+  <link rel="stylesheet" href="css/uPlot.min.css">
+  <script src="js/uPlot.iife.min.js"></script>
+  <!-- <script src="js/uPlot.iife.min.js"></script> -->
+  <!-- TODO: figure out how to bundle this better -->
+  <script src="https://leeoniya.github.io/uPlot/dist/uPlot.iife.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+  <h2>uPlot streaming data</h2>
+  <p><a href="#" onclick="window.__TAURI__.process.exit()">Quit</a>
+  <p>Based on <a href="https://leeoniya.github.io/uPlot/demos/pixel-align.html">uPlot/demos/pixel-align</a>
+
+  <div id="chart"></div>
+  <script>
+  const windowSize = 120000;
+  const interval = 50;
+  const loop = 1000;
+
+  const data = [
+      [],
+      [],
+      [],
+      [],
+      [],
+  ];
+
+  function addData() {
+      if (data[0].length == loop) {
+          data[0].shift();
+          data[1].shift();
+          data[2].shift();
+          data[3].shift();
+      }
+
+      data[0].push(Date.now());
+      data[1].push(0 - Math.random());
+      data[2].push(-1 - Math.random());
+      data[3].push(-2 - Math.random());
+  }
+
+  setInterval(addData, interval);
+
+  function getSize() {
+      return {
+          width: window.innerWidth - 100,
+          height: window.innerHeight / 3,
+      }
+  }
+
+  const scales = {
+      x: {},
+      y: {
+          auto: false,
+          range: [-3.5, 1.5]
+      }
+  };
+
+  const opts = {
+      title: "Scrolling Data Example",
+      ...getSize(),
+      pxAlign: 0,
+      ms: 1,
+      scales,
+      pxSnap: false,
+      series:
+      [
+          {},
+          {
+              stroke: "red",
+              paths: uPlot.paths.linear(),
+              spanGaps: true,
+              pxAlign: 0,
+              points: { show: true }
+          },
+          {
+              stroke: "blue",
+              paths: uPlot.paths.spline(),
+              spanGaps: true,
+              pxAlign: 0,
+              points: { show: true }
+          },
+          {
+              stroke: "purple",
+              paths: uPlot.paths.stepped({align: 1, pxSnap: false}),
+              spanGaps: true,
+              pxAlign: 0,
+              points: { show: true }
+          },
+      ],
+  };
+
+  let u = new uPlot(opts, data, document.getElementById('chart'));
+
+  function update() {
+      const now     = Date.now();
+      const scale = {min: now - windowSize, max: now};
+
+      u.setData(data, false);
+      u.setScale('x', scale);
+
+      requestAnimationFrame(update);
+  }
+
+  function getSize() {
+      return {
+          width: window.innerWidth - 100,
+          height: window.innerHeight - 200,
+      }
+  }
+
+  window.addEventListener("resize", e => {
+      u.setSize(getSize());
+  });
+
+  requestAnimationFrame(update);
+  </script>
+
+</body>
+</html>

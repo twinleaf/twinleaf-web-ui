@@ -1,0 +1,17 @@
+<html>
+<head>
+  <script>
+    console.log(window.__TAURI__.app.getName());
+  </script>
+</head>
+<body>
+<h1>It's working!</h1>
+<p>This is a quick demo/sandbox app.
+<p><a href="uplot-example.html">Try uPlot</a>
+<!-- not working  <p><a href="#" onclick="window.__TAURI__.notification.requestPermission().then((whatever) => window.__TAURI__.notification.sendNotification({title: 'Achtung', body: 'This was only a test'}));">Try desktop notification</a> -->
+<p><a href="#" onclick="window.__TAURI__.shell.open('https://twinleaf.com')">Open a webpage in a real browser</a>
+<p><a href="#" onclick="window.__TAURI__.invoke('print_ports_stdout');">Enumerate Serial Ports (CLI stdout)</a>
+<p><a href="#" onclick="console.log(window.__TAURI__.invoke('get_ports').then((res) => console.log(res)));">Enumerate Serial Ports (console.log)</a>
+<p><a href="#" onclick="window.__TAURI__.process.exit()">Quit</a>
+</body>
+</html>
