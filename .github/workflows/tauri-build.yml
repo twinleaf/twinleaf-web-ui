@@ -2,7 +2,7 @@ name: "build-tauri-on-pr"
 on: [pull_request]
 
 jobs:
-  test-tauri:
+  build-tauri:
     strategy:
       fail-fast: false
       matrix:
