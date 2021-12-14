@@ -40,6 +40,6 @@ jobs:
     - name: upload built binary
       uses: actions/upload-artifact@v2
       with:
-        name: tauri-executable
+        name: executable-${{ matrix.platform }}-${{ env.GITHUB_SHA }}
         path: desktop-tauri/target/release/twinleaf-tio-desktop*
         retention-days: 7
