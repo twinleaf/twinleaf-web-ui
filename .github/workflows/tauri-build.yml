@@ -27,9 +27,13 @@ jobs:
     # Not using nodejs ("vanilla" JS only)
     #- name: install app dependencies and build it
     #  run: yarn && yarn build
-    - uses: tauri-apps/tauri-action@v0
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        projectPath: desktop-tauri/
-        distPath: ../desktop-web/
+    #- uses: tauri-apps/tauri-action@v0
+    #  env:
+    #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    #  with:
+    #    projectPath: desktop-tauri/
+    #    distPath: ../desktop-web/
+    - name: run build
+      run: |
+        cd desktop-tauri
+        cargo build --release
