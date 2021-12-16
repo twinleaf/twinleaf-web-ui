@@ -24,12 +24,12 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libappindicator3-dev patchelf librsvg2-dev
+    #- name: install javascript deps and build bundle
+    #  run: make deps
     - name: install javascript deps and build bundle
-      run: make deps
+      run: yarn && make build-js
     - name: run build
-      run: |
-        cd desktop-tauri
-        cargo build --release --locked
+      run: make build-release
     - name: upload built binaries
       uses: actions/upload-artifact@v2
       with:
