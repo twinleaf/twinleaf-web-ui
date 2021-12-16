@@ -27,7 +27,7 @@ jobs:
     #- name: install javascript deps and build bundle
     #  run: make deps
     - name: install javascript deps and build bundle
-      run: yarn && make build-js
+      run: yarn && yarn build
     - name: run build
       run: make build-release
     - name: upload built binaries
@@ -36,16 +36,14 @@ jobs:
         name: executable-${{ matrix.platform }}
         path: desktop-tauri/target/release/twinleaf-tio-desktop*
         retention-days: 7
-    # disabled for now
-    #- uses: tauri-apps/tauri-action@v0
-    #  env:
-    #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #  with:
-    #    projectPath: desktop-tauri/
-    #    distPath: desktop-web/
-    #- name: upload built bundles
-    #  uses: actions/upload-artifact@v2
-    #  with:
-    #    name: bundle-${{ matrix.platform }}
-    #    path: desktop-tauri/target/release/bundle/*/twinleaf-tio-desktop*
-    #    retention-days: 7
+    - name: upload built bundles
+      uses: actions/upload-artifact@v2
+      with:
+        name: bundle-${{ matrix.platform }}
+        path: |
+            desktop-tauri/target/release/bundle/deb/*.deb
+            desktop-tauri/target/release/bundle/appimage/*.AppImage
+            desktop-tauri/target/release/bundle/dmg/*.dmg
+            desktop-tauri/target/release/bundle/macos/*.app
+            desktop-tauri/target/release/bundle/msi/*.msi
+        retention-days: 7
