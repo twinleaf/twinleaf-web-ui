@@ -18,6 +18,12 @@ src/build/
 *.log
 target/
 
+# don't commit (for now)
+node_modules/
+
+# the compiled bundle file
+desktop-web/twinleaf-web-ui.min.js
+
 # Don't ignore this file itself
 !.gitignore
 !.github/
