@@ -41,7 +41,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         projectPath: desktop-tauri/
-        distPath: ../desktop-web/
+        distPath: desktop-web/
     - name: upload built bundles
       uses: actions/upload-artifact@v2
       with:
