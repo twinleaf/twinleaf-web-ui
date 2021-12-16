@@ -5,7 +5,7 @@
   },
   "build": {
     "distDir": "../desktop-web",
-    "devPath": "../desktop-web",
+    "devPath": "http://localhost:5555",
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
     "withGlobalTauri": true
