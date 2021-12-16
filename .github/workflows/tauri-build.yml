@@ -36,15 +36,16 @@ jobs:
         name: executable-${{ matrix.platform }}
         path: desktop-tauri/target/release/twinleaf-tio-desktop*
         retention-days: 7
-    - uses: tauri-apps/tauri-action@v0
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        projectPath: desktop-tauri/
-        distPath: desktop-web/
-    - name: upload built bundles
-      uses: actions/upload-artifact@v2
-      with:
-        name: bundle-${{ matrix.platform }}
-        path: desktop-tauri/target/release/bundle/*/twinleaf-tio-desktop*
-        retention-days: 7
+    # disabled for now
+    #- uses: tauri-apps/tauri-action@v0
+    #  env:
+    #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    #  with:
+    #    projectPath: desktop-tauri/
+    #    distPath: desktop-web/
+    #- name: upload built bundles
+    #  uses: actions/upload-artifact@v2
+    #  with:
+    #    name: bundle-${{ matrix.platform }}
+    #    path: desktop-tauri/target/release/bundle/*/twinleaf-tio-desktop*
+    #    retention-days: 7
