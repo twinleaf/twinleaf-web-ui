@@ -24,22 +24,27 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libappindicator3-dev patchelf librsvg2-dev
-    # Not using nodejs ("vanilla" JS only)
-    #- name: install app dependencies and build it
-    #  run: yarn && yarn build
-    #- uses: tauri-apps/tauri-action@v0
-    #  env:
-    #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #  with:
-    #    projectPath: desktop-tauri/
-    #    distPath: ../desktop-web/
+    - name: install javascript deps and build bundle
+      run: make deps
     - name: run build
       run: |
         cd desktop-tauri
         cargo build --release --locked
-    - name: upload built binary
+    - name: upload built binaries
       uses: actions/upload-artifact@v2
       with:
-        name: executable-${{ matrix.platform }}-${{ env.GITHUB_SHA }}
+        name: executable-${{ matrix.platform }}
         path: desktop-tauri/target/release/twinleaf-tio-desktop*
+        retention-days: 7
+    - uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        projectPath: desktop-tauri/
+        distPath: ../desktop-web/
+    - name: upload built bundles
+      uses: actions/upload-artifact@v2
+      with:
+        name: bundle-${{ matrix.platform }}
+        path: desktop-tauri/target/release/bundle/*/twinleaf-tio-desktop*
         retention-days: 7
