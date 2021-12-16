@@ -12,6 +12,7 @@
     "esbuild": "^0.14.5"
   },
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build": "esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js"
   }
 }
