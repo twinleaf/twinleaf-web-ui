@@ -30,11 +30,11 @@ build-desktop: ## Build Tauri desktop application
 
 .PHONY: build-js
 build-js: ## Build Javascript bundle
-	./node_modules/.bin/esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js
+	node_modules/.bin/esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js
 
 .PHONY: dev-js
 dev-js: ## Run Javascript devserver
-	./node_modules/.bin/esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js --servedir=desktop-web --serve=127.0.0.1:5555
+	node_modules/.bin/esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js --servedir=desktop-web --serve=127.0.0.1:5555
 
 .PHONY: dev-tauri
 dev-tauri: ## Run Tauri devserver
