@@ -34,6 +34,11 @@ can take a fairly long time to compile (10+ minutes):
     # This should work
     cargo install tauri-cli --git https://github.com/tauri-apps/tauri
 
+UPDATE: one way forward is to install tauri-cli as a *global* package; that way
+it does not add many dependencies to the local project:
+
+    npm install -g @tauri-apps/cli
+
 ## Development Basics
 
 Check that tools are installed, and fetch node/npm depdendencies:
