@@ -8,7 +8,7 @@ help: ## Print info about all commands
 .PHONY: deps
 deps: ## Checks that all the dependencies are available, and installs modules
 	cargo --version
-	cargo tauri --version
+	cargo tauri --version || true
 	npm --version
 	npm install
 
