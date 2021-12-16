@@ -49,10 +49,10 @@ fn main() {
             .add_native_item(MenuItem::Separator)
             .add_native_item(MenuItem::Quit),
     );
-    let window_menu = Menu::new().add_submenu(file_submenu);
+    let _window_menu = Menu::new().add_submenu(file_submenu);
 
     tauri::Builder::default()
-        .menu(window_menu)
+        // DISABLED: .menu(window_menu)
         .system_tray(system_tray)
         .invoke_handler(tauri::generate_handler![print_ports_stdout, get_ports])
         .run(tauri::generate_context!())
