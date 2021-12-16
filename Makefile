@@ -42,4 +42,4 @@ dev-tauri: ## Run Tauri devserver
 
 .PHONY: build-release
 build-release: ## Build for release
-	cargo taudi build
+	cd desktop-tauri && cargo build --release
