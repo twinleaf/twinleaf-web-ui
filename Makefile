@@ -10,7 +10,7 @@ deps: ## Checks that all the dependencies are available, and installs modules
 	cargo --version
 	cargo tauri --version || true
 	npm --version
-	npm install
+	npm install  # this means deps AND dev deps
 
 .PHONY: test
 test: ## Run all tests
