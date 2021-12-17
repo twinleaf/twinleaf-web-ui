@@ -279,8 +279,15 @@ function makePlot(
   }
 
   // TODO move this into a hook
+  let lastResize = 0;
   window.addEventListener("resize", (e) => {
+    // debounce to prevent Tauri crash
+    // a real debounce would set a timer too
+    if (Date.now() < lastResize + 1000) {
+      return;
+    }
     u.setSize(getSize());
+    lastResize = Date.now();
   });
 
   return { plot: u, start: update, stop: stopRescheduling };
