@@ -1,83 +1,20 @@
 <html>
 <head>
   <link rel="stylesheet" href="css/uPlot.min.css">
-  <link rel="stylesheet" href="css/semantic.min.css">
-  <link rel="stylesheet" href="css/twinleaf-web-ui.css">
-  <script defer src="js/twinleaf-web-ui.js"></script>
+  <script src="js/twinleaf-web-ui.js"></script>
 </head>
 <body>
 
-<div class="ui grid" style="height: 100%; margin-top: 0px;">
-  <div class="three wide column" style="background-color: #1b1c1d;">
-    <!--
-      <img src="img/Twinleaf-Logo-White.png" style="width: 100%; padding: 0.5em; margin-bottom: 1em;">
-    <br>
-    -->
-    <div class="ui inverted vertical menu" id="page-menu">
-      <div class="item">
-        <img src="img/Twinleaf-Logo-White.png" style="margin-bottom: 1em;">
-      </div>
-      <a class="item" data-tab="config-page">
-        <i class="cog icon"></i>
-        Configure
-      </a>
-      <a class="item" data-tab="plot-page">
-        <i class="chart line icon"></i>
-        Plotting
-      </a>
-      <a class="item active" data-tab="about-page">
-        <i class="question circle icon"></i>
-        About
-      </a>
-    </div>
-
-    <div style="position:fixed; left: 2em; bottom: 2em;">
-      <button class="ui inverted large button" id="device-button">
-        Select Device
-      </button>
-    </div>
-  </div>
-  <div class="thirteen wide column" style="padding-top: 2em;">
-
-    <div class="ui tab" data-tab="config-page">
-      <!------- CONFIGURE ------>
-      <h1>Configure Device</h1>
-      <p>Something something
-    </div>
-
-    <div class="ui tab" data-tab="plot-page">
-      <!------- PLOTS ------>
-      <h1>Plotting</h1>
-      <div>
-        <div id="uplot-chart"></div>
-        <button class="ui primary button float right" id="start-plotting">Start</button>
-      </div>
-    </div>
-
-    <div class="ui active tab" data-tab="about-page">
-      <!------- ABOUT ------>
-      <h1>About</h1>
-      <p>Any kind of information could go here.
-    </div>
-
-  </div>
+<div id="root">
+<!-- The dynamically generated Twinleaf sensor monitor app gets inserted here -->
 </div>
 
-<div class="ui modal" id="device-modal">
-  <i class="close icon"></i>
-  <div class="header">
-    Select Device
-  </div>
-  <div class="content">
-    <p>We could show a list of detected devices here, or allow user to paste in to a URL box (eg, for network-connected devices via raw IP address).
-  </div>
-  <div class="actions">
-    <div class="ui positive right labeled icon button">
-      Sounds Great
-      <i class="checkmark icon"></i>
-    </div>
-  </div>
-</div>
+<script>
+const e = React.createElement;
+// Read ./main-react.js to see what components are available
+const TwinleafApp = e(App, {toWhat: 'World'}, null);
 
+ReactDOM.render(TwinleafApp, document.querySelector('#root'));
+</script>
 </body>
 </html>
