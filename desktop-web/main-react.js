@@ -2,6 +2,10 @@ import { app } from "@tauri-apps/api";
 import React, { Component } from "react";
 import ReactDOM from "react-dom";
 
+// This is the normal way to include react semantic ui css, but
+// for legibility in this app we include it from html instead.
+// import "semantic-ui-css/semantic.css";
+
 import { App } from "./src/app";
 
 export class Hello extends React.Component {
