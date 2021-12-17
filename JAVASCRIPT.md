@@ -35,7 +35,8 @@ the types are ignored. The whole point of the types is to use an editor / IDE
 that understands and checks them. Similar to runnning unit tests, it's common
 run a type checker (tsc is the name of the TypeScript compiler, AKA our type
 checker) in CI on GitHub. tsc can output compiled JavaScript, but we don't use
-tsc for that in this project.
+tsc for that in this project. If you don't have an editor / IDE set up for
+TypeScript, I recommend VSCode.
 
 When describing heirarchies of DOM elements it's convenient to use a syntax
 that looks more like HTML. Since most JavaScript is compiled anyway, using a
@@ -43,8 +44,10 @@ new language isn't such a reach.
 
 ## Avoiding writing TypeScript or JSX
 
-You can intermix .js and .ts files, but most of the React components do use
-JSX. To customize the app without touching JSX or TypeScript, you can 
+You can intermix .js and .ts and jsx and tsx files. The ts means TypeScript,
+the x means jsx. To customize the app without touching JSX or TypeScript, you
+can modify the JavaScript. You may be able to compose an app without modifying
+the components themselves.
 
 ## JavaScript Performance notes
 

@@ -1,37 +1,50 @@
-import { Component, useState, MouseEvent, useRef, useCallback } from "react";
+import React, {
+  useState,
+  MouseEvent,
+  useRef,
+  useCallback,
+  useEffect,
+} from "react";
 import uPlot from "uplot";
 import {
   Button,
   Container,
-  Grid,
   Header,
-  Icon,
   Image,
-  Item,
-  Label,
   Menu,
   MenuItemProps,
-  Segment,
-  Step,
-  Table,
 } from "semantic-ui-react";
 
 type ContentPane = "configure" | "plot" | "about";
 
 export const App = () => {
-  const [activePane, setActivePane] = useState<ContentPane>("configure");
+  const [activePane, setActivePane] = useState<ContentPane>("plot");
+  const [plotNames, setPlotNames] = useState<string[]>(["sensor 123"]);
+  const oneMorePlot = () =>
+    setPlotNames((x) => [...x, "sensor " + ("" + Math.random()).slice(3, 6)]);
 
   return (
     <Container fluid={true}>
       <TopBar activePane={activePane} setActivePane={setActivePane} />
-      <Header as="h1">{activePane}</Header>
-      <ExampleGraph hidden={activePane !== "plot"} />
-      {activePane === "configure"
-        ? "this is where you configure"
-        : activePane === "about"
-        ? "this is an about page, do we need this?"
-        : null}
+      <Header as="h1">this is the {activePane} pane</Header>
+      {plotNames.map((name) => (
+        <ExampleGraph name={name} key={name} hidden={activePane !== "plot"} />
+      ))}
+      {activePane === "configure" ? (
+        <ConfigurePane oneMorePlot={oneMorePlot} />
+      ) : activePane === "about" ? (
+        "this is an about page, do we need this?"
+      ) : null}
     </Container>
+  );
+};
+
+const ConfigurePane = ({ oneMorePlot }: { oneMorePlot: () => void }) => {
+  return (
+    <div>
+      This is where you configure
+      <Button onClick={oneMorePlot}>Add Plot</Button>
+    </div>
   );
 };
 
@@ -78,79 +91,131 @@ const TopBar = ({
       >
         About
       </Menu.Item>
+      <Menu.Item>
+        <FPSCounter />
+      </Menu.Item>
     </Menu>
   );
 };
 
 type ExampleGraphProps = {
   hidden: boolean;
+  name: string;
 };
 
 const ExampleGraph = (props: ExampleGraphProps) => {
+  const [plotting, setPlotting] = useState(false);
+
   const plotBuffer = useRef<FakePlotBuffer>(
     new FakePlotBuffer({
-      interval: 50,
-      loop: 1000,
+      interval: 5,
+      loop: 2000,
+      hz: 100,
     })
   );
+  plotBuffer.current.start();
   (window as any).plotBuffer = plotBuffer.current; // a way to debug an object interactively
 
   const elRef = useRef<HTMLDivElement>();
+  const plot = useRef<ReturnType<typeof makePlot>>();
   const setEl = useCallback((el) => {
     elRef.current = el;
     // kick something off synchronously here
-    plotBuffer.current.start();
-    makePlot(el, plotBuffer.current.data);
+    plot.current = makePlot(el, plotBuffer.current.data, props.name);
   }, []);
 
-  return <div ref={setEl} />;
+  const startPlotting = () => {
+    setPlotting(true);
+    plot.current?.start && plot.current.start();
+  };
+  const stopPlotting = () => {
+    setPlotting(false);
+    plot.current?.stop && plot.current.stop();
+  };
+
+  return (
+    <div hidden={props.hidden}>
+      <Button onClick={startPlotting} disabled={plotting}>
+        Start plotting
+      </Button>
+      <Button onClick={stopPlotting} disabled={!plotting}>
+        Pause plottling
+      </Button>
+      <div ref={setEl} />
+    </div>
+  );
 };
 
 class FakePlotBuffer {
   interval: number;
+  hz: number;
   loop: number;
+  added: number;
   data: [number[], number[], number[], number[]] = [[], [], [], []];
   intervalTimer: ReturnType<typeof setInterval>;
+  running = false;
+  t0: number;
 
-  constructor({ interval, loop }: { interval: number; loop: number }) {
+  constructor({
+    interval,
+    loop,
+    hz,
+  }: {
+    interval: number;
+    loop: number;
+    hz: number;
+  }) {
     this.loop = loop;
     this.interval = interval;
+    this.added = 0;
+    this.hz = hz;
   }
 
   addData = () => {
-    if (this.data[0].length === this.loop) {
+    const now = Date.now();
+    const delta = now - this.t0; // in milliseconds
+    const toAdd = Math.floor((this.hz * delta) / 1000 - this.added);
+
+    for (let i = 0; i < toAdd; i++) {
+      this.added += 1;
+      this.data[0].push(this.t0 + this.added / (this.hz / 1000));
+      this.data[1].push(0 - Math.random());
+      this.data[2].push(-1 - Math.random());
+      this.data[3].push(-2 - Math.random());
+    }
+
+    while (this.data[0].length > this.loop) {
       this.data[0].shift();
       this.data[1].shift();
       this.data[2].shift();
       this.data[3].shift();
     }
-
-    this.data[0].push(Date.now());
-    this.data[1].push(0 - Math.random());
-    this.data[2].push(-1 - Math.random());
-    this.data[3].push(-2 - Math.random());
   };
 
   start() {
+    if (this.running) return;
+    this.running = true;
+    this.t0 = Date.now();
     this.intervalTimer = setInterval(this.addData, this.interval);
   }
 
   stop() {
     clearTimeout(this.intervalTimer);
+    this.running = false;
   }
 }
 
 function makePlot(
   el: HTMLElement,
-  data: [number[], number[], number[], number[]]
-) {
-  const windowSize = 120000; // What the heck is windowSize?
+  data: [number[], number[], number[], number[]],
+  title: string
+): { plot: uPlot; start: () => void; stop: () => void } {
+  const windowSize = 10000;
   function getSize() {
+    // TODO use el.clientWidth in the future + a resizeObserver
     return {
-      //width: window.innerWidth - 100,
-      //height: window.innerHeight / 3,
-      width: 800,
-      height: 400,
+      width: window.innerWidth - 100,
+      height: Math.floor((window.innerWidth - 100) / 3),
     };
   }
 
@@ -158,12 +223,12 @@ function makePlot(
     x: {},
     y: {
       auto: false,
-      range: [-3.5, 1.5] as [number, number],
+      range: [-3.5, 0.5] as [number, number],
     },
   };
 
   const opts = {
-    title: "Scrolling Data Example",
+    title,
     ...getSize(),
     pxAlign: 0,
     ms: 1 as const,
@@ -173,21 +238,21 @@ function makePlot(
       {},
       {
         stroke: "red",
-        paths: uPlot.paths.linear(),
+        paths: uPlot.paths.linear!(),
         spanGaps: true,
         pxAlign: 0,
         points: { show: true },
       },
       {
         stroke: "blue",
-        paths: uPlot.paths.spline(),
+        paths: uPlot.paths.spline!(),
         spanGaps: true,
         pxAlign: 0,
         points: { show: true },
       },
       {
         stroke: "purple",
-        paths: uPlot.paths.stepped({ align: 1 }),
+        paths: uPlot.paths.stepped!({ align: 1 }),
         spanGaps: true,
         pxAlign: 0,
         points: { show: true },
@@ -197,6 +262,12 @@ function makePlot(
 
   let u = new uPlot(opts, data, el);
 
+  // TODO move this into a hook or stateful object
+  // TODO debounce this, window resize behavior feels bad
+  let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
+  function stopRescheduling() {
+    cancelAnimationFrame(scheduledPlotUpdate);
+  }
   function update() {
     const now = Date.now();
     const scale = { min: now - windowSize, max: now };
@@ -204,12 +275,38 @@ function makePlot(
     u.setData(data, false);
     u.setScale("x", scale);
 
-    requestAnimationFrame(update);
+    scheduledPlotUpdate = requestAnimationFrame(update);
   }
 
-  update();
-
+  // TODO move this into a hook
   window.addEventListener("resize", (e) => {
     u.setSize(getSize());
   });
+
+  return { plot: u, start: update, stop: stopRescheduling };
 }
+
+const FPSCounter = () => {
+  const elRef = useRef<HTMLSpanElement>();
+  useEffect(() => {
+    let renders: number[] = [];
+
+    const recordFrame = () => {
+      const now = performance.now();
+      renders.push(now);
+      renders = renders.filter((t) => t > now - 1000);
+      if (elRef.current) {
+        elRef.current.innerHTML = "" + renders.length + " FPS";
+      }
+      requestAnimationFrame(recordFrame);
+    };
+
+    const handle = requestAnimationFrame(recordFrame);
+
+    return function cleanup() {
+      cancelAnimationFrame(handle);
+    };
+  });
+
+  return <span ref={elRef}></span>;
+};
