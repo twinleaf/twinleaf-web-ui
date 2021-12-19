@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WebSocket TIO test</title>
+    <meta name="author" content="gilberto@tersatech.com">
+    <meta name="description" content="Proof of concept: interacting with tio-proxy via WebSocket API.">
+</head>
+<body>
+    <button id="connect">Connect</button>
+    <input type="text" id="tio_addr" value="localhost:7853"><br>
+    <button id="do_rpc" disabled>RPC</button>
+    <input type="text" id="tio_rpc" value="dev.desc"> &rarr;
+    <input type="text" id="rpc_reply" value="" size="60" disabled>
+    <div id="logdata" style="font-family: monospace">
+    </div>
+    <script>
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        function processPacket(pkt) {
+            const payloadSize = pkt[2] + 256 * pkt[3];
+            if (pkt[0] == 0x1) {
+                // log message
+                if (((payloadSize + 8) < pkt.byteLength) || (payloadSize <= 5))
+                    return;
+                let p = document.createElement("div");
+                p.textContent = decoder.decode(pkt.subarray(9, payloadSize + 4))
+                let logdata = document.getElementById("logdata");
+                logdata.appendChild(p);
+                if (logdata.childElementCount > 25)
+                    logdata.removeChild(logdata.firstChild);
+            }
+            if (pkt[0] == 3) {
+                // RPC reply
+                rpc_reply.value = decoder.decode(pkt.subarray(6, payloadSize + 4))
+            }
+        }
+        var socket = null;
+        function connect_to_proxy() {
+            addr = 'ws://' + tio_addr.value;
+            socket = new WebSocket(addr);
+            socket.addEventListener('open', sock_connected);
+            socket.addEventListener('close', sock_closed);
+            socket.addEventListener('error', sock_error);
+            socket.addEventListener('message', sock_msg);
+            connect.disabled = true;
+        }
+        function disconnect() {
+            socket.close();
+            socket = null;
+            connect.textContent = "Connect";
+            connect.disabled = false;
+            connect.onclick = connect_to_proxy;
+            do_rpc.disabled = true;
+        }
+        function sock_msg(event) {
+            event.data.arrayBuffer().then(ab => {
+                processPacket(new Uint8Array(ab));
+            })
+        }
+        function sock_connected(event) {
+            connect.textContent = "Disconnect";
+            connect.disabled = false;
+            connect.onclick = disconnect;
+            do_rpc.disabled = false;
+        }
+        function sock_closed(event) {
+            disconnect();
+        }
+        function sock_error(event) {
+            console.log("error", event);
+            disconnect();
+        }
+        connect.onclick = connect_to_proxy;
+        do_rpc.onclick = function () {
+            rpc_name = encoder.encode(tio_rpc.value);
+            req = new Uint8Array(rpc_name.length + 8);
+            req.set([2, 0, rpc_name.length + 4, 0, 0, 0, rpc_name.length, 0x80]);
+            req.set(rpc_name, 8);
+            socket.send(req);
+        }
+    </script>
+</body>
+</html>

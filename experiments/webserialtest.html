@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WebSerial TIO test</title>
+    <meta name="author" content="gilberto@tersatech.com">
+    <meta name="description" content="Proof of concept: interacting with a TIO sensor via WebSerial API.">
+</head>
+<body>
+    <button id="selectport">Select Port</button>
+    <button id="stopport">Stop</button>
+    <div id="logdata" style="font-family: monospace">
+    </div>
+    <script>
+        function sendHeartbeat(writer) {
+            // Hack: hardcoded heartbeat to switch to binary mode.
+            // For this we don't really even need to send it periodically.
+            data = Uint8Array.from([0xC0, 0x05, 0x00, 0x00, 0x00, 0x2E, 0x2F, 0x9A, 0x16, 0xC0]);
+            writer.write(data);
+        }
+        const decoder = new TextDecoder();
+        function processPacket(pkt) {
+            // filter out short messages
+            if (pkt.byteLength < 8)
+                return;
+            // only care about log messages
+            if (pkt[0] != 0x1)
+                return;
+            // TODO: verify fields and crc32 for real
+            const payloadSize = pkt[2] + 256 * pkt[3];
+            if (((payloadSize + 8) < pkt.byteLength) || (payloadSize <= 5))
+                return;
+            console.log("LOG:", decoder.decode(pkt.subarray(9, payloadSize + 4)))
+            let p = document.createElement("div");
+            p.textContent = decoder.decode(pkt.subarray(9, payloadSize + 4))
+            let logdata = document.getElementById("logdata");
+            logdata.appendChild(p);
+            if (logdata.childElementCount > 25)
+                logdata.removeChild(logdata.firstChild);
+        }
+        var curPacket = [];
+        var escape = false;
+        var reader = null;
+        var breakout = false;
+        stopport.onclick = function () { reader.cancel(); breakout = true; }
+        selectport.onclick = function () {
+            breakout = false;
+            navigator.serial.requestPort().then(port => {
+                port.open({ baudRate: 115200, bufferSize: 4096 }).then(async () => {
+                    //setInterval(sendHeartbeat, 250, port.writable.getWriter());
+                    sendHeartbeat(port.writable.getWriter());
+                    while (port.readable && !breakout) {
+                        reader = port.readable.getReader();
+                        try {
+                            while (!breakout) {
+                                const { value, done } = await reader.read();
+                                if (done || breakout)
+                                    break;
+
+                                value.forEach(byte => {
+                                    if (byte === 0xC0) {
+                                        // end of packet
+                                        processPacket(Uint8Array.from(curPacket));
+                                        curPacket = [];
+                                        escape = false;
+                                    } else {
+                                        if (escape) {
+                                            escape = false;
+                                            if (byte === 0xDC)
+                                                curPacket.push(0xC0);
+                                            if (byte === 0xDD)
+                                                curPacket.push(0xDB);
+                                        } else {
+                                            if (byte === 0xDB)
+                                                escape = true;
+                                            else
+                                                curPacket.push(byte);
+                                        }
+                                    }
+                                })
+                            }
+                        } catch (error) {
+                            console.log("ERROR:", error);
+                        } finally {
+                            reader.releaseLock();
+                            reader = null;
+                        }
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
