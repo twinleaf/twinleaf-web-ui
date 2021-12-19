@@ -22,7 +22,7 @@ target/
 node_modules/
 
 # the compiled bundle file
-desktop-web/twinleaf-web-ui.min.js
+web/twinleaf-web-ui.min.js
 
 # Don't ignore this file itself
 !.gitignore

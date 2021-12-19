@@ -14,6 +14,6 @@
       "suppressImplicitAnyIndexErrors": true,
       "allowSyntheticDefaultImports": true
     },
-    "include": ["desktop-web/src"],
+    "include": ["web/src"],
     "exclude": ["node_modules"]
   }

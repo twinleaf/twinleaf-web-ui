@@ -14,27 +14,27 @@ deps: ## Checks that all the dependencies are available, and installs modules
 
 .PHONY: test
 test: ## Run all tests
-	cd desktop-tauri && cargo test
+	cd src-tauri && cargo test
 
 .PHONY: lint
 lint: ## Run syntax/style checks
-	cd desktop-tauri && cargo clippy -- --no-deps
+	cd src-tauri && cargo clippy -- --no-deps
 
 .PHONY: fmt
 fmt: ## Run syntax re-formatting
-	cd desktop-tauri && cargo fmt
+	cd src-tauri && cargo fmt
 
 .PHONY: build-desktop
 build-desktop: ## Build Tauri desktop application
-	cd desktop-tauri && cargo build
+	cd src-tauri && cargo build
 
 .PHONY: build-js
 build-js: ## Build Javascript bundle
-	node_modules/.bin/esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js
+	node_modules/.bin/esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js
 
 .PHONY: dev-js
 dev-js: ## Run Javascript devserver
-	node_modules/.bin/esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js --servedir=desktop-web --serve=127.0.0.1:5555
+	node_modules/.bin/esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js --servedir=web --serve=127.0.0.1:5555
 
 .PHONY: dev-tauri
 dev-tauri: ## Run Tauri devserver
@@ -42,4 +42,4 @@ dev-tauri: ## Run Tauri devserver
 
 .PHONY: build-release
 build-release: ## Build for release
-	cd desktop-tauri && cargo build --release
+	cd src-tauri && cargo build --release

@@ -16,6 +16,6 @@
   },
   "scripts": {
     "tauri": "tauri",
-    "build": "esbuild desktop-web/main.js --bundle --outfile=desktop-web/js/twinleaf-web-ui.js"
+    "build": "esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js"
   }
 }
