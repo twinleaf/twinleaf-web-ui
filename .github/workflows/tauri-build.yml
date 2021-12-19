@@ -15,35 +15,35 @@ jobs:
       uses: actions/setup-node@v1
       with:
         node-version: 12
-    - name: install Rust stable
+    - name: install Rust stable toolchain
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
-    - name: install webkit2gtk (ubuntu only)
+    - name: install webkit2gtk and other system dependencies (ubuntu only)
       if: matrix.platform == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libappindicator3-dev patchelf librsvg2-dev
-    #- name: install javascript deps and build bundle
-    #  run: make deps
-    - name: install javascript deps and build bundle
-      run: yarn && yarn build
-    - name: run build
-      run: make build-release
-    - name: upload built binaries
+    - name: install javascript deps and build single JS file
+      run: yarn && yarn build-js
+    - name: run tauri (desktop app) build
+      run: yarn tauri build
+    - name: upload tauri executables
       uses: actions/upload-artifact@v2
       with:
         name: executable-${{ matrix.platform }}
-        path: desktop-tauri/target/release/twinleaf-tio-desktop*
+        path: |
+            src-tauri/target/release/twinleaf-tio-desktop-sandbox
+            src-tauri/target/release/twinleaf-tio-desktop-sandbox.exe
         retention-days: 7
-    - name: upload built bundles
+    - name: upload tauri (desktop app) distribution bundles
       uses: actions/upload-artifact@v2
       with:
         name: bundle-${{ matrix.platform }}
         path: |
-            desktop-tauri/target/release/bundle/deb/*.deb
-            desktop-tauri/target/release/bundle/appimage/*.AppImage
-            desktop-tauri/target/release/bundle/dmg/*.dmg
-            desktop-tauri/target/release/bundle/macos/*.app
-            desktop-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/msi/*.msi
         retention-days: 7
