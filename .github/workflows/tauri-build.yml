@@ -24,26 +24,26 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libappindicator3-dev patchelf librsvg2-dev
-    #- name: install javascript deps and build bundle
-    #  run: make deps
     - name: install javascript deps and build bundle
-      run: yarn && yarn build
+      run: yarn && yarn build-js
     - name: run build
-      run: make build-release
+      run: yarn tauri build
     - name: upload built binaries
       uses: actions/upload-artifact@v2
       with:
         name: executable-${{ matrix.platform }}
-        path: desktop-tauri/target/release/twinleaf-tio-desktop*
+        path: |
+            src-tauri/target/release/twinleaf-tio-desktop
+            src-tauri/target/release/twinleaf-tio-desktop.exe
         retention-days: 7
     - name: upload built bundles
       uses: actions/upload-artifact@v2
       with:
         name: bundle-${{ matrix.platform }}
         path: |
-            desktop-tauri/target/release/bundle/deb/*.deb
-            desktop-tauri/target/release/bundle/appimage/*.AppImage
-            desktop-tauri/target/release/bundle/dmg/*.dmg
-            desktop-tauri/target/release/bundle/macos/*.app
-            desktop-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/msi/*.msi
         retention-days: 7
