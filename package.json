@@ -12,10 +12,11 @@
     "uplot": "^1.6.17"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.0.0-beta.10",
     "esbuild": "^0.14.5"
   },
   "scripts": {
     "tauri": "tauri",
-    "build": "esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js"
+    "build-js": "esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js"
   }
 }
