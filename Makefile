@@ -8,38 +8,42 @@ help: ## Print info about all commands
 .PHONY: deps
 deps: ## Checks that all the dependencies are available, and installs modules
 	cargo --version
-	cargo tauri --version || true
 	npm --version
 	npm install  # this means deps AND dev deps
+	npm run tauri info
 
 .PHONY: test
-test: ## Run all tests
+test: ## Run all tests (cargo)
 	cd src-tauri && cargo test
 
 .PHONY: lint
-lint: ## Run syntax/style checks
+lint: ## Run syntax/style checks (cargo clippy)
 	cd src-tauri && cargo clippy -- --no-deps
 
 .PHONY: fmt
-fmt: ## Run syntax re-formatting
+fmt: ## Run syntax re-formatting (cargo)
 	cd src-tauri && cargo fmt
 
-.PHONY: build-desktop
-build-desktop: ## Build Tauri desktop application
+.PHONY: build-tauri
+build-tauri: build-js ## Build Tauri desktop application for dev (cargo)
 	cd src-tauri && cargo build
 
 .PHONY: build-js
-build-js: ## Build Javascript bundle
+build-js: ## Build Javascript bundle (esbuild)
 	node_modules/.bin/esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js
 
 .PHONY: dev-js
-dev-js: ## Run Javascript devserver
+dev-js: ## Run Javascript devserver (esbuild)
 	node_modules/.bin/esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js --servedir=web --serve=127.0.0.1:5555
 
 .PHONY: dev-tauri
-dev-tauri: ## Run Tauri devserver
-	cargo tauri dev
+dev-tauri: ## Run Tauri desktop app for dev (tauri CLI)
+	npm run tauri dev
 
 .PHONY: build-release
-build-release: ## Build for release
+build-release: build-js ## Build desktop app for release (cargo)
 	cd src-tauri && cargo build --release
+
+.PHONY: dist
+dist: build-js ## Build desktop app "bundles" (tauri CLI)
+	npm run tauri build
