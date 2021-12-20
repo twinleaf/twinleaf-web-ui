@@ -3,58 +3,195 @@
     windows_subsystem = "windows"
 )]
 
-use tauri::{
-    CustomMenuItem, Menu, MenuItem, Submenu, SystemTray, SystemTrayMenu, SystemTrayMenuItem,
-};
+use crossbeam_channel as channel;
+use serde::Serialize;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+use tauri::{AppHandle, CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
 
-#[tauri::command]
-fn print_ports_stdout() {
-    println!("=== Serial ports ===");
-    if let Ok(ports) = serialport::available_ports() {
-        for p in ports {
-            println!("{}", p.port_name);
+struct DeviceJuggler {
+    uri: Option<String>,
+    packet_tx: Option<channel::Sender<()>>,
+}
+
+impl DeviceJuggler {
+    pub fn new() -> DeviceJuggler {
+        DeviceJuggler {
+            uri: None,
+            packet_tx: None,
         }
-        println!("(done)");
-    } else {
-        // TODO: real error handling
-        println!("Something went wrong!");
+    }
+
+    pub fn enumerate_devices() -> Vec<String> {
+        if let Ok(ports) = serialport::available_ports() {
+            println!("### Enumerating serial devices...");
+            for p in ports.iter() {
+                println!("{}", p.port_name);
+            }
+            ports.into_iter().map(|p| p.port_name).collect()
+        } else {
+            // TODO: real error handling (or at least warning)
+            println!("Error fetching serial ports");
+            vec![]
+        }
+    }
+
+    pub fn disconnect(&mut self) -> Result<String, String> {
+        self.uri = None;
+        self.packet_tx = None;
+        Ok("disconnected".to_string())
+    }
+
+    pub fn connect_uri(&mut self, uri: String, app: AppHandle) -> Result<String, String> {
+        if let Some(ref existing) = self.uri {
+            return Err(format!("Already connected to a device: {}", existing));
+        }
+        if uri.starts_with("dummy") {
+            println!("Starting dummy data loop!");
+            let (tx_sender, tx_receiver) = channel::bounded(0);
+            thread::spawn(move || DeviceJuggler::loop_dummy(app, tx_receiver));
+            self.packet_tx = Some(tx_sender);
+        }
+        self.uri = Some(uri);
+        Ok("connected".to_string())
+    }
+
+    /// This "dummy data" event loop runs at 25 Hz and pushes  random data to the app
+    pub fn loop_dummy(app: AppHandle, done_rx: channel::Receiver<()>) {
+        let mut time_sec = 0f64;
+        let mut count = 0u32;
+        loop {
+            let resp = done_rx.recv_timeout(Duration::from_millis(40));
+            if let Err(channel::RecvTimeoutError::Disconnected) = resp {
+                return;
+            }
+            time_sec += 0.040;
+            count += 1;
+            if count % 25 == 0 {
+                app.emit_all(
+                    "device-packet",
+                    DeviceMessage::new_log("warn", "this is a dummy log message"),
+                )
+                .unwrap();
+            }
+            app.emit_all(
+                "device-packet",
+                DeviceMessage::new_data(count, vec![time_sec.sin(), time_sec.cos(), time_sec]),
+            )
+            .unwrap();
+        }
     }
 }
 
-#[tauri::command]
-fn get_ports() -> Vec<String> {
-    if let Ok(ports) = serialport::available_ports() {
-        ports.into_iter().map(|p| p.port_name).collect()
-    } else {
-        // TODO: real error handling
-        println!("Error fetching ports, returning none");
-        vec![]
+/// Simplified version of this struct
+#[derive(Clone, Serialize)]
+struct DeviceMessage {
+    packet_type: String,
+    log_type: Option<String>,
+    log_message: Option<String>,
+    rpc_request_id: Option<u32>,
+    rpc_message: Option<String>,
+    rpc_error: Option<String>,
+    sample_number: Option<u32>,
+    data_floats: Option<Vec<f64>>,
+}
+
+impl DeviceMessage {
+    fn new_log(log_type: &str, msg: &str) -> DeviceMessage {
+        DeviceMessage {
+            packet_type: "log".to_string(),
+            log_type: Some(log_type.to_string()),
+            log_message: Some(msg.to_string()),
+            rpc_request_id: None,
+            rpc_message: None,
+            rpc_error: None,
+            sample_number: None,
+            data_floats: None,
+        }
     }
+    fn new_data(sample_number: u32, data: Vec<f64>) -> DeviceMessage {
+        DeviceMessage {
+            packet_type: "data".to_string(),
+            log_type: None,
+            log_message: None,
+            rpc_request_id: None,
+            rpc_message: None,
+            rpc_error: None,
+            sample_number: Some(sample_number),
+            data_floats: Some(data),
+        }
+    }
+}
+
+/// Returns a list of URIs that could be connected to
+#[tauri::command]
+fn enumerate_devices() -> Vec<String> {
+    DeviceJuggler::enumerate_devices()
+}
+
+#[tauri::command]
+fn connect_device(
+    uri: String,
+    state: tauri::State<Arc<Mutex<DeviceJuggler>>>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let mut juggler = state.lock().unwrap();
+    juggler.connect_uri(uri, app_handle)
+}
+
+#[tauri::command]
+fn disconnect(state: tauri::State<Arc<Mutex<DeviceJuggler>>>) -> Result<String, String> {
+    let mut juggler = state.lock().unwrap();
+    juggler.disconnect()
 }
 
 fn main() {
-    let quit = CustomMenuItem::new("quit".to_string(), "Does nothing");
-    let hide = CustomMenuItem::new("hide".to_string(), "Also does nothing");
+    let hide_menuitem = CustomMenuItem::new("hide".to_string(), "Hide Window");
+    let show_menuitem = CustomMenuItem::new("show".to_string(), "Show Window");
+    let quit_menuitem = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
-        .add_item(quit)
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(hide);
+        .add_item(hide_menuitem)
+        .add_item(show_menuitem)
+        .add_item(quit_menuitem);
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
-    let file_submenu = Submenu::new(
-        "File",
-        Menu::new()
-            .add_native_item(MenuItem::Hide)
-            .add_native_item(MenuItem::Services)
-            .add_native_item(MenuItem::Separator)
-            .add_native_item(MenuItem::Quit),
-    );
-    let _window_menu = Menu::new().add_submenu(file_submenu);
+    let juggler_mutex = Arc::new(Mutex::new(DeviceJuggler::new()));
 
     tauri::Builder::default()
-        // DISABLED: .menu(window_menu)
+        .manage(juggler_mutex)
         .system_tray(system_tray)
-        .invoke_handler(tauri::generate_handler![print_ports_stdout, get_ports])
+        .on_system_tray_event(|app, event| match event {
+            SystemTrayEvent::DoubleClick {
+                position: _,
+                size: _,
+                ..
+            } => {
+                println!("system tray received a double click");
+                let window = app.get_window("main").unwrap();
+                window.show().unwrap();
+            }
+            SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+                "hide" => {
+                    let window = app.get_window("main").unwrap();
+                    window.hide().unwrap();
+                }
+                "show" => {
+                    let window = app.get_window("main").unwrap();
+                    window.show().unwrap();
+                }
+                "quit" => {
+                    std::process::exit(0);
+                }
+                _ => {}
+            },
+            _ => {}
+        })
+        .invoke_handler(tauri::generate_handler![
+            enumerate_devices,
+            connect_device,
+            disconnect
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
