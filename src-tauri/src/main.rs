@@ -4,6 +4,7 @@
 )]
 
 use crossbeam_channel as channel;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown, TcpStream};
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -23,18 +24,27 @@ impl DeviceJuggler {
         }
     }
 
+    /// Creates a list of possible devices to connect to. Mostly hunting for serial ports, but also
+    /// checks for a local TCP proxy (on the default port) and includes a dummy device. In the
+    /// future could do mDNS discovery.
     pub fn enumerate_devices() -> Vec<String> {
+        let mut devices = vec!["dummy".to_string()];
+        // see if proxy is running locally
+        if let Ok(conn) = TcpStream::connect_timeout(&SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 7855), Duration::from_millis(100)) {
+            conn.shutdown(Shutdown::Both).unwrap();
+            devices.push("tcp://localhost:7855".to_string());
+        }
         if let Ok(ports) = serialport::available_ports() {
             println!("### Enumerating serial devices...");
             for p in ports.iter() {
                 println!("{}", p.port_name);
+                devices.push(format!("serial://{}", p.port_name));
             }
-            ports.into_iter().map(|p| p.port_name).collect()
         } else {
             // TODO: real error handling (or at least warning)
             println!("Error fetching serial ports");
-            vec![]
         }
+        devices
     }
 
     pub fn disconnect(&mut self) -> Result<String, String> {
@@ -52,6 +62,12 @@ impl DeviceJuggler {
             let (tx_sender, tx_receiver) = channel::bounded(0);
             thread::spawn(move || DeviceJuggler::loop_dummy(app, tx_receiver));
             self.packet_tx = Some(tx_sender);
+        } else if uri.starts_with("tcp://") {
+            return Err(format!("TCP connection not implemented yet: {}", uri));
+        } else if uri.starts_with("serial://") {
+            return Err(format!("websocket not implemented yet: {}", uri));
+        } else if uri.starts_with("ws://") {
+            return Err(format!("serial connections not implemented: {}", uri));
         }
         self.uri = Some(uri);
         Ok("connected".to_string())
@@ -84,7 +100,7 @@ impl DeviceJuggler {
     }
 }
 
-/// Simplified version of this struct
+/// Greatly simplified version of TIO packets. This represents, at most, a single frame.
 #[derive(Clone, Serialize)]
 struct DeviceMessage {
     packet_type: String,
