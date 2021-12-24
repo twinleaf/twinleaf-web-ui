@@ -88,9 +88,21 @@ impl RawPacket {
             routing: raw[4 + header.payload_len as usize..].to_vec(),
         })
     }
+
+    /// The append() method mutates the "from", so this needs to consume/destroy the entire struct
+    pub fn into_bytes(mut self) -> Vec<u8> {
+        let mut data: Vec<u8> =
+            Vec::with_capacity(4 + self.routing_len as usize + self.payload_len as usize);
+        data.push(self.packet_type as u8);
+        data.push(self.routing_len);
+        data.append(&mut self.payload_len.to_le_bytes().to_vec());
+        data.append(&mut self.payload);
+        data.append(&mut self.routing);
+        data
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[repr(u8)]
 pub enum LogType {
     Critical = 0,
@@ -98,6 +110,20 @@ pub enum LogType {
     Warning = 2,
     Info = 3,
     Debug = 4,
+}
+
+impl LogType {
+    pub fn from_u8(raw: u8) -> Result<LogType, String> {
+        use LogType::*;
+        match raw {
+            0 => Ok(Critical),
+            1 => Ok(Error),
+            2 => Ok(Warning),
+            3 => Ok(Info),
+            4 => Ok(Debug),
+            _ => Err("unhandled logtype".into()),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -117,6 +143,24 @@ impl LogMessage {
             message,
         }
     }
+
+    pub fn from_bytes(payload: &[u8]) -> LogMessage {
+        LogMessage {
+            log_data: u32::from_le_bytes(payload[0..4].try_into().unwrap()),
+            log_type: LogType::from_u8(payload[4]).unwrap(),
+            message: String::from_utf8(payload[5..].to_vec()).unwrap(),
+        }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        // TODO: message.len() is code points, not bytes, but probably almost always bytes, and Vec
+        // can just expand with a realloc so not a big deal
+        let mut data: Vec<u8> = Vec::with_capacity(4 + 1 + self.message.len());
+        data.append(&mut self.log_data.to_le_bytes().to_vec());
+        data.push(self.log_type.clone() as u8);
+        data.append(&mut self.message.as_bytes().to_vec());
+        data
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -129,7 +173,7 @@ pub struct RPCRequest {
 
 impl RPCRequest {
     /// Simple RPC: named by string, no payload
-    pub fn new_named_simple(name: String) -> RPCRequest {
+    pub fn named_simple(name: String) -> RPCRequest {
         // TODO: more accurate name restriction
         assert!(name.len() < 256);
         RPCRequest {
@@ -138,6 +182,16 @@ impl RPCRequest {
             name,
             payload: vec![],
         }
+    }
+
+    // TODO: this is a partial implementation
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut data: Vec<u8> = Vec::with_capacity(2 + 2 + self.name.len() + self.payload.len());
+        data.append(&mut self.req_id.to_le_bytes().to_vec());
+        data.append(&mut self.method_or_len.to_le_bytes().to_vec());
+        data.append(&mut self.name.as_bytes().to_vec());
+        data.append(&mut self.payload.clone());
+        data
     }
 }
 
@@ -199,7 +253,9 @@ impl StreamData {
         for i in 0..(self.payload.len() / 4) {
             // try_into() is a hack to convert arbitrary slice into a fixed-size slice
             // https://newbedev.com/how-can-i-convert-a-buffer-of-a-slice-of-bytes-u8-to-an-integer
-            data[i] = f32::from_le_bytes((&self.payload)[i * 4..i * 4 + 4].try_into().unwrap());
+            data.push(f32::from_le_bytes(
+                (&self.payload)[i * 4..i * 4 + 4].try_into().unwrap(),
+            ));
         }
         data
     }
@@ -207,12 +263,20 @@ impl StreamData {
     pub fn from_f32(sample_num: u32, values: &[f32]) -> StreamData {
         assert!(values.len() < 128);
         let mut payload = Vec::with_capacity(values.len() * 4);
-        for (i, v) in values.iter().enumerate() {
-            payload[4*i..4*i+4].copy_from_slice(&f32::to_le_bytes(*v));
+        for (_i, v) in values.iter().enumerate() {
+            // TODO: cleaner way of doing this slice assignment
+            payload.append(&mut f32::to_le_bytes(*v).to_vec());
         }
         StreamData {
             sample_num,
-            payload
+            payload,
+        }
+    }
+
+    pub fn from_bytes(payload: &[u8]) -> StreamData {
+        StreamData {
+            sample_num: u32::from_le_bytes(payload[0..4].try_into().unwrap()),
+            payload: payload[4..].to_vec(),
         }
     }
 }
@@ -225,6 +289,36 @@ pub enum Packet {
     RpcRes(RPCResponse),
     //StreamDesc(StreamDescription),
     StreamData(StreamData),
+}
+
+impl Packet {
+    pub fn packet_type(&self) -> PacketType {
+        match self {
+            Packet::Empty => PacketType::Heartbeat,
+            Packet::Log(_) => PacketType::Log,
+            Packet::RpcReq(_) => PacketType::RPCRequest,
+            Packet::RpcRes(_) => PacketType::RPCResponse,
+            Packet::StreamData(_) => PacketType::StreamZero,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
+        use Packet::*;
+        let payload_bytes = match self {
+            Empty => vec![],
+            Log(msg) => msg.to_bytes(),
+            RpcReq(req) => req.to_bytes(),
+            RpcRes(_) | StreamData(_) => unimplemented!(),
+        };
+        let raw_packet = RawPacket {
+            packet_type: self.packet_type(),
+            routing_len: 0,
+            payload_len: payload_bytes.len() as u16,
+            payload: payload_bytes,
+            routing: vec![],
+        };
+        Ok(raw_packet.into_bytes())
+    }
 }
 
 #[cfg(test)]
@@ -244,5 +338,12 @@ mod tests {
         assert_eq!(hdr.packet_type, PacketType::Log);
         assert_eq!(hdr.routing_len, 0);
         assert_eq!(hdr.payload_len, 32);
+    }
+
+    #[test]
+    fn test_stream_data() -> () {
+        let vals: [f32; 3] = [500.0, -800.0, 3.2];
+        let sd = StreamData::from_f32(87654321, &vals);
+        assert_eq!(vals.to_vec(), sd.as_f32());
     }
 }
