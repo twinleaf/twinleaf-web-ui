@@ -1,4 +1,4 @@
 mod device;
 mod slip;
 
-pub use device::Device;
+pub use device::{Device, DeviceInfo};

@@ -1,6 +1,7 @@
 use crate::slip::{tio_slip_decode, tio_slip_encode};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use crossbeam_channel as channel;
+use serde::Serialize;
 use serialport::SerialPortType;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -14,7 +15,7 @@ use tio_packet::{
 
 /// Represents metadata about a device that would be returned by StreamDesc and/or other RPC calls
 /// at device initialization time
-#[derive(Debug)]
+#[derive(Debug, Serialize, Clone)]
 pub struct DeviceInfo {
     pub name: String,
     pub channels: Vec<String>,
@@ -116,7 +117,8 @@ impl Device {
         let mut stream = TcpStream::connect(host_port)?;
         //let mut stream = TcpStream::connect_timeout(&host_port.parse()?, Duration::from_secs(3))?;
         stream.set_nonblocking(true)?;
-        let (tx_sender, tx_receiver) = channel::bounded(0);
+        let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) =
+            channel::bounded(0);
         let (rx_sender, rx_receiver) = channel::bounded(0);
         thread::spawn(move || {
             let mut header_buf = [0; 4];
@@ -125,8 +127,7 @@ impl Device {
                 // do a non-blocking recv for any outgoing packets
                 match tx_receiver.try_recv() {
                     Ok(packet) => {
-                        // TODO: send this packet down the pipe as bytes
-                        //stream.write(packet.as_bytes());
+                        stream.write(&packet.to_bytes().unwrap()).unwrap();
                         continue;
                     }
                     Err(channel::TryRecvError::Empty) => (),
@@ -155,8 +156,14 @@ impl Device {
                                     )),
                                     Heartbeat => Packet::Empty,
                                     // TODO: actually parse/handle these
-                                    Timebase | Source | Text | RPCResponse => Packet::Empty,
-                                    _ => unimplemented!(),
+                                    Timebase | Source | Text | RPCResponse | Invalid
+                                    | RPCRequest | RPCError | Stream => {
+                                        println!(
+                                            "ignoring unhandled packet type: {:?}",
+                                            raw_packet.packet_type
+                                        );
+                                        Packet::Empty
+                                    }
                                 };
                                 match packet {
                                     Packet::Log(_) | Packet::StreamData(_) => {
@@ -165,7 +172,6 @@ impl Device {
                                     _ => (),
                                 };
                             }
-                            Ok(_) => unimplemented!("partial message in TCP receive"),
                             Err(e) => Err(e).unwrap(),
                         }
                     }
@@ -194,12 +200,11 @@ impl Device {
         // send "send_all"
         let req = Packet::RpcReq(RPCRequest::named_simple("dev.send_all".to_string()));
         let msg = req.to_bytes().unwrap();
-        port.write_all(&tio_slip_encode(&msg));
-        println!("{:?}", tio_slip_encode(&msg));
+        port.write_all(&tio_slip_encode(&msg))?;
 
         // do a read to flush any random input
         let mut serial_buf: Vec<u8> = vec![0; 1000];
-        println!("{:?}", port.read(serial_buf.as_mut_slice())?);
+        port.read(serial_buf.as_mut_slice())?;
 
         let (tx_sender, tx_receiver) = channel::bounded(0);
         let (rx_sender, rx_receiver) = channel::bounded(0);
@@ -216,7 +221,7 @@ impl Device {
             loop {
                 // do a non-blocking recv for any outgoing packets
                 match tx_receiver.try_recv() {
-                    Ok(packet) => {
+                    Ok(_packet) => {
                         // TODO: send this packet down the pipe as bytes
                         //stream.write(packet.as_bytes());
                         continue;
@@ -249,8 +254,14 @@ impl Device {
                             }
                             Heartbeat => Packet::Empty,
                             // TODO: actually parse/handle these
-                            Timebase | Source | Text | RPCResponse => Packet::Empty,
-                            _ => unimplemented!(),
+                            Timebase | Source | Text | RPCResponse | Invalid | RPCRequest
+                            | RPCError | Stream => {
+                                println!(
+                                    "ignoring unhandled packet type: {:?}",
+                                    raw_packet.packet_type
+                                );
+                                Packet::Empty
+                            }
                         };
                         match packet {
                             Packet::Log(_) | Packet::StreamData(_) => {
