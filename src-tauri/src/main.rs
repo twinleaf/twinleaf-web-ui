@@ -4,22 +4,23 @@
 )]
 
 use crossbeam_channel as channel;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown, TcpStream};
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
+use tio::{Device, DeviceInfo};
+use tio_packet::Packet;
 
 struct DeviceJuggler {
-    uri: Option<String>,
+    device: Option<Device>,
     packet_tx: Option<channel::Sender<()>>,
 }
 
 impl DeviceJuggler {
     pub fn new() -> DeviceJuggler {
         DeviceJuggler {
-            uri: None,
+            device: None,
             packet_tx: None,
         }
     }
@@ -28,74 +29,69 @@ impl DeviceJuggler {
     /// checks for a local TCP proxy (on the default port) and includes a dummy device. In the
     /// future could do mDNS discovery.
     pub fn enumerate_devices() -> Vec<String> {
-        let mut devices = vec!["dummy".to_string()];
-        // see if proxy is running locally
-        if let Ok(conn) = TcpStream::connect_timeout(&SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 7855), Duration::from_millis(100)) {
-            conn.shutdown(Shutdown::Both).unwrap();
-            devices.push("tcp://localhost:7855".to_string());
-        }
-        if let Ok(ports) = serialport::available_ports() {
-            println!("### Enumerating serial devices...");
-            for p in ports.iter() {
-                println!("{}", p.port_name);
-                devices.push(format!("serial://{}", p.port_name));
-            }
-        } else {
-            // TODO: real error handling (or at least warning)
-            println!("Error fetching serial ports");
-        }
-        devices
+        Device::enumerate_devices()
     }
 
     pub fn disconnect(&mut self) -> Result<String, String> {
-        self.uri = None;
+        self.device = None;
         self.packet_tx = None;
         Ok("disconnected".to_string())
     }
 
-    pub fn connect_uri(&mut self, uri: String, app: AppHandle) -> Result<String, String> {
-        if let Some(ref existing) = self.uri {
-            return Err(format!("Already connected to a device: {}", existing));
+    pub fn connect_uri(&mut self, uri: String, app: AppHandle) -> Result<DeviceInfo, String> {
+        if let Some(ref existing) = self.device {
+            return Err(format!("Already connected to a device: {}", existing.uri));
         }
-        if uri.starts_with("dummy") {
-            println!("Starting dummy data loop!");
-            let (tx_sender, tx_receiver) = channel::bounded(0);
-            thread::spawn(move || DeviceJuggler::loop_dummy(app, tx_receiver));
-            self.packet_tx = Some(tx_sender);
-        } else if uri.starts_with("tcp://") {
-            return Err(format!("TCP connection not implemented yet: {}", uri));
-        } else if uri.starts_with("serial://") {
-            return Err(format!("websocket not implemented yet: {}", uri));
-        } else if uri.starts_with("ws://") {
-            return Err(format!("serial connections not implemented: {}", uri));
-        }
-        self.uri = Some(uri);
-        Ok("connected".to_string())
+        self.device = Some(Device::connect(uri).unwrap());
+
+        println!("Starting app handler loop!");
+        let (tx_sender, tx_receiver) = channel::bounded(0);
+        self.packet_tx = Some(tx_sender);
+        let device_tx = self.device.as_ref().unwrap().rx.clone();
+        thread::spawn(move || DeviceJuggler::loop_packets(app, device_tx, tx_receiver));
+
+        Ok(self.device.as_ref().unwrap().info.clone())
     }
 
-    /// This "dummy data" event loop runs at 25 Hz and pushes  random data to the app
-    pub fn loop_dummy(app: AppHandle, done_rx: channel::Receiver<()>) {
-        let mut time_sec = 0f64;
-        let mut count = 0u32;
+    pub fn loop_packets(
+        app: AppHandle,
+        device_rx: channel::Receiver<Packet>,
+        done_rx: channel::Receiver<()>,
+    ) {
         loop {
-            let resp = done_rx.recv_timeout(Duration::from_millis(40));
+            let resp = done_rx.recv_timeout(Duration::from_millis(1));
             if let Err(channel::RecvTimeoutError::Disconnected) = resp {
+                // shutdown
                 return;
             }
-            time_sec += 0.040;
-            count += 1;
-            if count % 25 == 0 {
-                app.emit_all(
-                    "device-packet",
-                    DeviceMessage::new_log("warn", "this is a dummy log message"),
-                )
-                .unwrap();
+
+            match device_rx.recv_timeout(Duration::from_millis(40)) {
+                Ok(packet) => {
+                    use Packet::*;
+                    match packet {
+                        Log(msg) => {
+                            app.emit_all(
+                                "device-packet",
+                                DeviceMessage::new_log("warn", &msg.message),
+                            )
+                            .unwrap();
+                        }
+                        StreamData(sd) => {
+                            app.emit_all(
+                                "device-packet",
+                                DeviceMessage::new_data(
+                                    sd.sample_num,
+                                    sd.as_f32().into_iter().map(|v| v as f64).collect(),
+                                ),
+                            )
+                            .unwrap();
+                        }
+                        _ => (),
+                    }
+                }
+                Err(channel::RecvTimeoutError::Timeout) => {}
+                Err(channel::RecvTimeoutError::Disconnected) => return,
             }
-            app.emit_all(
-                "device-packet",
-                DeviceMessage::new_data(count, vec![time_sec.sin(), time_sec.cos(), time_sec]),
-            )
-            .unwrap();
         }
     }
 }
@@ -151,7 +147,7 @@ fn connect_device(
     uri: String,
     state: tauri::State<Arc<Mutex<DeviceJuggler>>>,
     app_handle: tauri::AppHandle,
-) -> Result<String, String> {
+) -> Result<DeviceInfo, String> {
     let mut juggler = state.lock().unwrap();
     juggler.connect_uri(uri, app_handle)
 }

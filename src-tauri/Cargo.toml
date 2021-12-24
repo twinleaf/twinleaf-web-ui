@@ -19,6 +19,8 @@ tauri = { version = "1.0.0-beta.8", features = ["api-all", "system-tray"] }
 # above this line are tauri generic; below are for Twinleaf
 crossbeam-channel = "0.5"
 serialport = { version = "4", default-features = false }
+tio = { version = "*", path = "../tio-rust/tio/" }
+tio-packet = { version = "*", path = "../tio-rust/tio-packet/" }
 
 [features]
 default = [ "custom-protocol" ]
