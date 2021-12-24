@@ -32,6 +32,12 @@ export const App = () => {
     }
     await api.connectDevice({uri: deviceId});
     setConnectedDevice(deviceId);
+    // TODO TOMHERE
+    // Next thing to do is to make call api.listenToPackets and
+    // start dealing with packets! Display log messages somewhere
+    // and add to a (eventually circular) plot buffer with the data.
+    // A Buffer object probably makes sense so we can hold one ref here.
+    // move FakePlotBuffer logic into the demo device.
   }
   const disconnect = async () => {
     await api.disconnect();

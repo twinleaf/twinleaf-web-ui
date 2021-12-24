@@ -21,7 +21,6 @@ export type DataDevicePacket = {
 export type DevicePacket = LogDevicePacket | DataDevicePacket;
 export type DeviceId = string;
 export type DeviceInfo = any; // TODO
-
 export type APIType = "Tauri"|"WebSerial"|"Demo";
 
 export interface API {
