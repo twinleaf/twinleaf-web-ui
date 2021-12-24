@@ -14,10 +14,47 @@ import {
   Menu,
   MenuItemProps,
 } from "semantic-ui-react";
+import {useAPI} from "./hooks";
+import {APIType, DeviceId, DeviceInfo} from "./api";
 
 type ContentPane = "configure" | "plot" | "about";
 
+
 export const App = () => {
+  const api = useAPI();
+  const [devices, setDevices] = useState<[DeviceId, DeviceInfo][]>([]);
+  const [connectedDevice, setConnectedDevice] = useState<DeviceId|undefined>();
+  const connect = async (deviceId: DeviceId) => {
+    // TODO this isn't reentrant, we need another state bit for "busy" to hide the buttons and/or return early
+    if (connectedDevice) {
+      await api.disconnect();
+      setConnectedDevice(undefined)
+    }
+    await api.connectDevice({uri: deviceId});
+    setConnectedDevice(deviceId);
+  }
+  const disconnect = async () => {
+    await api.disconnect();
+    setConnectedDevice(undefined)
+  }
+
+  const updateDevices = async () => {
+    await disconnect();
+    setDevices([]);
+    const deviceIds = await api.enumerateDevices();
+    const devicesAndInfo: [DeviceId, DeviceInfo][] = [];
+    for (const deviceId of deviceIds) {
+      // TODO what does a failed call here look like?
+      const deviceInfo = await api.connectDevice({uri: deviceId});
+      devicesAndInfo.push([deviceId, deviceInfo]);
+      await api.disconnect();
+    }
+    setDevices(devicesAndInfo);
+  }
+  useEffect(() => {
+    updateDevices();
+  }, []);
+
   const [activePane, setActivePane] = useState<ContentPane>("plot");
   const [plotNames, setPlotNames] = useState<string[]>(["sensor 123"]);
   const oneMorePlot = () =>
@@ -31,7 +68,7 @@ export const App = () => {
         <ExampleGraph name={name} key={name} hidden={activePane !== "plot"} />
       ))}
       {activePane === "configure" ? (
-        <ConfigurePane oneMorePlot={oneMorePlot} />
+        <ConfigurePane oneMorePlot={oneMorePlot} devices={devices} apiType={api.type} connectedDevice={connectedDevice} updateDevices={updateDevices} connect={connect} disconnect={disconnect}/>
       ) : activePane === "about" ? (
         "this is an about page, do we need this?"
       ) : null}
@@ -39,19 +76,37 @@ export const App = () => {
   );
 };
 
-const ConfigurePane = ({ oneMorePlot }: { oneMorePlot: () => void }) => {
+type ConfigurePaneProps = {
+  oneMorePlot: () => void;
+  devices: [DeviceId, DeviceInfo][];
+  updateDevices: () => void;
+  apiType: APIType;
+  connectedDevice: DeviceId | undefined;
+  connect: (id: DeviceId) => Promise<void>;
+  disconnect: () => Promise<void>;
+};
+const ConfigurePane = ({ oneMorePlot, devices, updateDevices, apiType, connectedDevice, connect, disconnect }: ConfigurePaneProps) => {
+
   return (
     <div>
-      This is where you configure
+      Currently using the {apiType} interface. <br/>
+      <Button onClick={updateDevices}>Scan for devices</Button> <br/>
+      Devices: {devices.map(([id, info]) => 
+      <div>
+        {id} - {JSON.stringify(info, null, 2)}
+        {connectedDevice === id
+          ? <>
+            "Connected"
+            <Button onClick={disconnect}>Disconnect</Button>
+            </>
+          : <Button onClick={() => connect(id)}>Connect</Button>
+        }
+        <br/>
+      </div>)}
       <Button onClick={oneMorePlot}>Add Plot</Button>
     </div>
   );
 };
-
-function foo(x: number): number {
-  return "asdf"; // this is a type error! and that shows TypeScript is working.
-  // However, esbuild is not a type checker! It bundles code with type errors no problem.
-}
 
 const TopBar = ({
   activePane,
@@ -294,7 +349,7 @@ function makePlot(
 }
 
 const FPSCounter = () => {
-  const elRef = useRef<HTMLSpanElement>();
+  const elRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     let renders: number[] = [];
 

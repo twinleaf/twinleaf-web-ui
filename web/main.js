@@ -1,5 +1,5 @@
 import { app } from "@tauri-apps/api";
-import React, { Component } from "react";
+import React from "react";
 import ReactDOM from "react-dom";
 
 // This is the normal way to include react semantic ui css, but

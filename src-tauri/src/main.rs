@@ -33,7 +33,8 @@ impl DeviceJuggler {
     }
 
     pub fn disconnect(&mut self) -> Result<String, String> {
-        self.device = None;
+        println!("Disconnecting");
+        self.uri = None;
         self.packet_tx = None;
         Ok("disconnected".to_string())
     }
