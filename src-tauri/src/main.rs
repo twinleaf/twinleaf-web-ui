@@ -73,6 +73,7 @@ impl DeviceJuggler {
     /// Just clears the Options, which should result in the Device getting "dropped", which should
     /// result in the I/O threads shutting down quickly. But this has not been confirmed/tested.
     pub fn disconnect(&mut self) -> Result<String, String> {
+        println!("Disconnecting");
         self.device = None;
         self.packet_tx = None;
         Ok("disconnected".to_string())
