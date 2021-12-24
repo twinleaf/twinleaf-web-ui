@@ -1,0 +1,18 @@
+[package]
+name = "tio"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+tio-packet = { version = "*", path = "../tio-packet" }
+structopt = "0.3"
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.7"
+serialport = "*"
+atty = "0.2"
+termcolor = "1"
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+assert_cmd = "1"
