@@ -25,6 +25,7 @@ globalThis.App = App;
 globalThis.React = React;
 globalThis.ReactDOM = ReactDOM;
 
+/*
 import { invoke } from "@tauri-apps/api";
 // or: const invoke = window.__TAURI__.invoke
 import { listen } from '@tauri-apps/api/event'
@@ -57,10 +58,11 @@ globalThis.demo_enumerate = demo_enumerate = function() {
 // "dummy" is a special device that will send bogus data
 // Currently this doesn't really return anything, but the intention is to have
 // it return an object which has metadata about the device
-//invoke('connect_device', { uri: "dummy" }).then((resp) => console.log(resp))
+//invoke('connect_device', { uri: "dummy://" }).then((resp) => console.log(resp))
 //invoke('connect_device', { uri: "" }).then((resp) => console.log(resp))
 
 globalThis.demo_connect = function(uri) {
     invoke('connect_device', { uri: uri }).then((resp) => console.log(resp))
 }
+*/
 

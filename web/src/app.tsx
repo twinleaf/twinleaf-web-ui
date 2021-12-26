@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  MouseEvent,
-  useRef,
-  useCallback,
-  useEffect,
-} from "react";
+import React, { useState, MouseEvent, useRef, useEffect } from "react";
 import uPlot from "uplot";
 import {
   Button,
@@ -14,35 +8,73 @@ import {
   Menu,
   MenuItemProps,
 } from "semantic-ui-react";
-import {useAPI} from "./hooks";
-import {APIType, DeviceId, DeviceInfo} from "./api";
+import { useAPI, useFPS, useLogs, useWhatChanged } from "./hooks";
+import {
+  APIType,
+  DataDevicePacket,
+  DeviceId,
+  DeviceInfo,
+  DevicePacket,
+} from "./api";
+import { PollingWatchKind } from "typescript";
 
 type ContentPane = "configure" | "plot" | "about";
-
 
 export const App = () => {
   const api = useAPI();
   const [devices, setDevices] = useState<[DeviceId, DeviceInfo][]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<DeviceId|undefined>();
+  const [connectedDevice, setConnectedDevice] = useState<
+    DeviceId | undefined
+  >();
+  const [logs, addLogMessage, clearLogs] = useLogs(100);
+
+  const dataBuffer = useRef<DataBuffer>();
+  const { setFPSRef } = useFPS(true);
+
+  const [activePane, setActivePane] = useState<ContentPane>("configure");
+  const [plotNames, setPlotNames] = useState<string[]>(["sensor 123"]);
+  const oneMorePlot = () =>
+    setPlotNames((x) => [...x, "sensor " + ("" + Math.random()).slice(3, 6)]);
+
+  // stop listening to Tauri events
+  const stopListening = useRef<() => void>();
+  const disconnect = async () => {
+    console.log("stop listening to", stopListening.current);
+    stopListening.current && stopListening.current();
+    await api.disconnect();
+    setConnectedDevice(undefined);
+  };
   const connect = async (deviceId: DeviceId) => {
     // TODO this isn't reentrant, we need another state bit for "busy" to hide the buttons and/or return early
     if (connectedDevice) {
+      console.log("stop listening to", stopListening.current);
+      stopListening.current && stopListening.current();
       await api.disconnect();
-      setConnectedDevice(undefined)
+      setConnectedDevice(undefined);
     }
-    await api.connectDevice({uri: deviceId});
+    const info = await api.connectDevice(deviceId);
     setConnectedDevice(deviceId);
-    // TODO TOMHERE
-    // Next thing to do is to make call api.listenToPackets and
-    // start dealing with packets! Display log messages somewhere
-    // and add to a (eventually circular) plot buffer with the data.
-    // A Buffer object probably makes sense so we can hold one ref here.
-    // move FakePlotBuffer logic into the demo device.
-  }
-  const disconnect = async () => {
-    await api.disconnect();
-    setConnectedDevice(undefined)
-  }
+
+    dataBuffer.current = new DataBuffer(info, 1000);
+
+    const onPacket = (packet: DevicePacket) => {
+      if (packet.packet_type === "data") {
+        dataBuffer.current!.addFrame(packet);
+      } else if (packet.packet_type === "log") {
+        console.log("log packet:", packet.log_type, packet.log_message);
+        addLogMessage({
+          log_type: packet.log_type,
+          log_message: packet.log_message,
+        });
+      } else {
+        throw new Error("received unknown packet type");
+      }
+    };
+
+    stopListening.current = await api.listenToPackets(onPacket);
+    setActivePane("plot");
+    return;
+  };
 
   const updateDevices = async () => {
     await disconnect();
@@ -51,30 +83,43 @@ export const App = () => {
     const devicesAndInfo: [DeviceId, DeviceInfo][] = [];
     for (const deviceId of deviceIds) {
       // TODO what does a failed call here look like?
-      const deviceInfo = await api.connectDevice({uri: deviceId});
+      const deviceInfo = await api.connectDevice(deviceId);
       devicesAndInfo.push([deviceId, deviceInfo]);
       await api.disconnect();
     }
     setDevices(devicesAndInfo);
-  }
+  };
   useEffect(() => {
     updateDevices();
   }, []);
 
-  const [activePane, setActivePane] = useState<ContentPane>("plot");
-  const [plotNames, setPlotNames] = useState<string[]>(["sensor 123"]);
-  const oneMorePlot = () =>
-    setPlotNames((x) => [...x, "sensor " + ("" + Math.random()).slice(3, 6)]);
-
   return (
     <Container fluid={true}>
-      <TopBar activePane={activePane} setActivePane={setActivePane} />
-      <Header as="h1">this is the {activePane} pane</Header>
-      {plotNames.map((name) => (
-        <ExampleGraph name={name} key={name} hidden={activePane !== "plot"} />
-      ))}
+      <TopBar
+        activePane={activePane}
+        setActivePane={setActivePane}
+        setFPSRef={setFPSRef}
+      />
+      {plotNames.map(
+        (name) =>
+          dataBuffer.current && (
+            <MultiChannelGraph
+              key={name}
+              dataBuffer={dataBuffer.current}
+              hidden={activePane !== "plot"}
+            />
+          )
+      )}
       {activePane === "configure" ? (
-        <ConfigurePane oneMorePlot={oneMorePlot} devices={devices} apiType={api.type} connectedDevice={connectedDevice} updateDevices={updateDevices} connect={connect} disconnect={disconnect}/>
+        <ConfigurePane
+          oneMorePlot={oneMorePlot}
+          devices={devices}
+          apiType={api.type}
+          connectedDevice={connectedDevice}
+          updateDevices={updateDevices}
+          connect={connect}
+          disconnect={disconnect}
+        />
       ) : activePane === "about" ? (
         "this is an about page, do we need this?"
       ) : null}
@@ -91,35 +136,55 @@ type ConfigurePaneProps = {
   connect: (id: DeviceId) => Promise<void>;
   disconnect: () => Promise<void>;
 };
-const ConfigurePane = ({ oneMorePlot, devices, updateDevices, apiType, connectedDevice, connect, disconnect }: ConfigurePaneProps) => {
+const ConfigurePane = ({
+  oneMorePlot,
+  devices,
+  updateDevices,
+  apiType,
+  connectedDevice,
+  connect,
+  disconnect,
+}: ConfigurePaneProps) => {
+  const connectedDeviceInfo =
+    connectedDevice && devices.find(([id, info]) => id === connectedDevice);
 
   return (
-    <div>
-      Currently using the {apiType} interface. <br/>
-      <Button onClick={updateDevices}>Scan for devices</Button> <br/>
-      Devices: {devices.map(([id, info]) => 
+    <>
+      <Header as="h1">
+        {connectedDeviceInfo
+          ? "Connected to " + connectedDeviceInfo[1].name
+          : "Connect to a device"}
+      </Header>
       <div>
-        {id} - {JSON.stringify(info, null, 2)}
-        {connectedDevice === id
-          ? <>
-            "Connected"
-            <Button onClick={disconnect}>Disconnect</Button>
-            </>
-          : <Button onClick={() => connect(id)}>Connect</Button>
-        }
-        <br/>
-      </div>)}
-      <Button onClick={oneMorePlot}>Add Plot</Button>
-    </div>
+        Currently using the {apiType} interface. <br />
+        Devices:{" "}
+        {devices.map(([id, info]) => (
+          <div key={id}>
+            {id} - {JSON.stringify(info, null, 2)}
+            {connectedDevice === id ? (
+              <Button onClick={disconnect}>Disconnect</Button>
+            ) : (
+              <Button onClick={() => connect(id)}>Connect</Button>
+            )}
+            <br />
+          </div>
+        ))}
+        <Button onClick={updateDevices}>Scan again for devices</Button>
+        <br />
+        <button onClick={oneMorePlot}>debug: Add Plot</button>
+      </div>
+    </>
   );
 };
 
 const TopBar = ({
   activePane,
   setActivePane,
+  setFPSRef,
 }: {
   activePane: ContentPane;
   setActivePane: (pane: ContentPane) => void;
+  setFPSRef: (el: HTMLElement | null) => void;
 }) => {
   const handleItemClick = (e: MouseEvent, { name }: MenuItemProps) => {
     setActivePane(name as ContentPane);
@@ -153,49 +218,52 @@ const TopBar = ({
         About
       </Menu.Item>
       <Menu.Item>
-        <FPSCounter />
+        <span ref={setFPSRef} />
       </Menu.Item>
     </Menu>
   );
 };
 
-type ExampleGraphProps = {
+type MultiChannelGraphProps = {
+  dataBuffer: DataBuffer;
   hidden: boolean;
-  name: string;
 };
-
-const ExampleGraph = (props: ExampleGraphProps) => {
+const MultiChannelGraph = (props: MultiChannelGraphProps) => {
+  const { dataBuffer, hidden } = props;
   const [plotting, setPlotting] = useState(false);
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
 
-  const plotBuffer = useRef<FakePlotBuffer>(
-    new FakePlotBuffer({
-      interval: 5,
-      loop: 2000,
-      hz: 100,
-    })
-  );
-  plotBuffer.current.start();
-  (window as any).plotBuffer = plotBuffer.current; // a way to debug an object interactively
+  (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
 
-  const elRef = useRef<HTMLDivElement>();
   const plot = useRef<ReturnType<typeof makePlot>>();
-  const setEl = useCallback((el) => {
-    elRef.current = el;
-    // kick something off synchronously here
-    plot.current = makePlot(el, plotBuffer.current.data, props.name);
-  }, []);
 
   const startPlotting = () => {
+    if (!plot.current?.start) return;
+    plot.current.start();
     setPlotting(true);
-    plot.current?.start && plot.current.start();
   };
   const stopPlotting = () => {
+    console.log("stopping updating plot", plot.current);
     setPlotting(false);
     plot.current?.stop && plot.current.stop();
   };
 
+  useWhatChanged({ dataBuffer, el }, "running create plot useEffect");
+  useEffect(() => {
+    if (el) {
+      el.innerHTML = "";
+      plot.current = makePlot(el, dataBuffer);
+      console.log("creating plot...", dataBuffer, el);
+      startPlotting();
+      return function cleanup() {
+        stopPlotting();
+      };
+    }
+    return;
+  }, [dataBuffer, el]);
+
   return (
-    <div hidden={props.hidden}>
+    <div hidden={hidden}>
       <Button onClick={startPlotting} disabled={plotting}>
         Start plotting
       </Button>
@@ -207,71 +275,51 @@ const ExampleGraph = (props: ExampleGraphProps) => {
   );
 };
 
-class FakePlotBuffer {
-  interval: number;
-  hz: number;
-  loop: number;
-  added: number;
-  data: [number[], number[], number[], number[]] = [[], [], [], []];
-  intervalTimer: ReturnType<typeof setInterval>;
-  running = false;
-  t0: number;
-
-  constructor({
-    interval,
-    loop,
-    hz,
-  }: {
-    interval: number;
-    loop: number;
-    hz: number;
-  }) {
-    this.loop = loop;
-    this.interval = interval;
-    this.added = 0;
-    this.hz = hz;
-  }
-
-  addData = () => {
-    const now = Date.now();
-    const delta = now - this.t0; // in milliseconds
-    const toAdd = Math.floor((this.hz * delta) / 1000 - this.added);
-
-    for (let i = 0; i < toAdd; i++) {
-      this.added += 1;
-      this.data[0].push(this.t0 + this.added / (this.hz / 1000));
-      this.data[1].push(0 - Math.random());
-      this.data[2].push(-1 - Math.random());
-      this.data[3].push(-2 - Math.random());
+// always make a new buffer when switching devices
+class DataBuffer {
+  size: number;
+  data: number[][];
+  sampleNums: number[] = [];
+  deviceName: string;
+  channelNames: string[];
+  sampleReceivedTimes: number[] = [];
+  constructor(info: DeviceInfo, size = 1000) {
+    this.deviceName = info.name;
+    this.data = [];
+    this.channelNames = info.channels;
+    for (const _ of this.channelNames) {
+      this.data.push([]);
     }
-
-    while (this.data[0].length > this.loop) {
-      this.data[0].shift();
-      this.data[1].shift();
-      this.data[2].shift();
-      this.data[3].shift();
+    this.size = size;
+  }
+  addFrame = (frame: DataDevicePacket) => {
+    for (let i = 0; i < this.channelNames.length; i++) {
+      this.data[i].push(frame.data_floats[i]);
+      if (this.data[i].length > this.size) this.data[i].shift();
+    }
+    this.sampleReceivedTimes.push(performance.now());
+    this.sampleNums.push(frame.sample_number);
+    if (this.sampleNums.length > this.size) {
+      this.sampleNums.shift();
+      this.sampleReceivedTimes.shift();
     }
   };
-
-  start() {
-    if (this.running) return;
-    this.running = true;
-    this.t0 = Date.now();
-    this.intervalTimer = setInterval(this.addData, this.interval);
-  }
-
-  stop() {
-    clearTimeout(this.intervalTimer);
-    this.running = false;
-  }
+  observedHz = () => {
+    if (!this.sampleReceivedTimes.length) return 0;
+    const lastN = this.sampleReceivedTimes.slice(-11);
+    const dt = lastN[lastN.length - 1] - lastN[0];
+    const fps = ((lastN.length - 1) / dt) * 1000;
+    return Math.round(fps * 100) / 100;
+  };
 }
 
 function makePlot(
   el: HTMLElement,
-  data: [number[], number[], number[], number[]],
-  title: string
+  dataBuffer: DataBuffer
 ): { plot: uPlot; start: () => void; stop: () => void } {
-  const windowSize = 10000;
+  const { deviceName, data, channelNames, size, sampleNums, observedHz } =
+    dataBuffer;
+
   function getSize() {
     // TODO use el.clientWidth in the future + a resizeObserver
     return {
@@ -284,44 +332,29 @@ function makePlot(
     x: {},
     y: {
       auto: false,
-      range: [-3.5, 0.5] as [number, number],
+      range: [0, 1] as [number, number],
     },
   };
 
+  const colors = ["red", "green", "blue", "yellow", "orange", "purple"];
+
   const opts = {
-    title,
+    title: dataBuffer.deviceName,
     ...getSize(),
     pxAlign: 0,
     ms: 1 as const,
     scales,
     pxSnap: false,
-    series: [
-      {},
-      {
-        stroke: "red",
-        paths: uPlot.paths.linear!(),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: true },
-      },
-      {
-        stroke: "blue",
-        paths: uPlot.paths.spline!(),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: true },
-      },
-      {
-        stroke: "purple",
-        paths: uPlot.paths.stepped!({ align: 1 }),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: true },
-      },
-    ],
+    series: dataBuffer.channelNames.map((name, i) => ({
+      stroke: colors[i % colors.length],
+      paths: uPlot.paths.linear!(),
+      spanGaps: true,
+      pxAlign: 0,
+      points: { show: true },
+    })),
   };
 
-  let u = new uPlot(opts, data, el);
+  let u = new uPlot(opts, [sampleNums, ...data], el);
 
   // TODO move this into a hook or stateful object
   // TODO debounce this, window resize behavior feels bad
@@ -330,11 +363,15 @@ function makePlot(
     cancelAnimationFrame(scheduledPlotUpdate);
   }
   function update() {
-    const now = Date.now();
-    const scale = { min: now - windowSize, max: now };
+    const scale = {
+      min: sampleNums[0],
+      max: sampleNums[sampleNums.length - 1],
+    };
 
-    u.setData(data, false);
+    u.setData([sampleNums, ...data], false);
     u.setScale("x", scale);
+    (el.querySelector(".u-title")! as HTMLDivElement).innerText =
+      dataBuffer.deviceName + " - " + observedHz() + " Hz";
 
     scheduledPlotUpdate = requestAnimationFrame(update);
   }
@@ -353,28 +390,3 @@ function makePlot(
 
   return { plot: u, start: update, stop: stopRescheduling };
 }
-
-const FPSCounter = () => {
-  const elRef = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    let renders: number[] = [];
-
-    const recordFrame = () => {
-      const now = performance.now();
-      renders.push(now);
-      renders = renders.filter((t) => t > now - 1000);
-      if (elRef.current) {
-        elRef.current.innerHTML = "" + renders.length + " FPS";
-      }
-      requestAnimationFrame(recordFrame);
-    };
-
-    const handle = requestAnimationFrame(recordFrame);
-
-    return function cleanup() {
-      cancelAnimationFrame(handle);
-    };
-  });
-
-  return <span ref={elRef}></span>;
-};
