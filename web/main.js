@@ -2,8 +2,9 @@ import { app } from "@tauri-apps/api";
 import React from "react";
 import ReactDOM from "react-dom";
 
+
 // This is the normal way to include react semantic ui css, but
-// for legibility in this app we include it from html instead.
+// loading from html avoids needing esbuild binary loaders.
 // import "semantic-ui-css/semantic.css";
 
 import { App } from "./src/app";

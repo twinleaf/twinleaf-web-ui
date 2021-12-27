@@ -58,7 +58,7 @@ export const TauriAPI: API = {
     console.log(resp);
     return resp as any[]; // just hoping
   },
-  connectDevice: async (uri: string) => {
+  connectDevice: async (_uri: string) => {
     const resp: DeviceInfo = await invoke("connect_device", {
       uri: "dummy://",
     });
@@ -85,21 +85,23 @@ export const DemoAPI: API = {
     const sendLogPacket = () =>
       cb({
         packet_type: "log",
-        log_type: "dunno what valid log levels are",
+        log_type: "warn",
         log_message: "This is a log message",
       });
     let timer: ReturnType<typeof setTimeout>;
     const sendAndSchedule = () => {
+      console.log("send");
       sendLogPacket();
-      sendDataPacket();
-      timer = setTimeout(sendAndSchedule, 100);
+      for (let i = 0; i < 50; i++) {
+        sendDataPacket();
+      }
     };
     const stopListening = () => {
       console.log("clearing timeout for fake demo data generation");
-      clearTimeout(timer);
+      clearInterval(timer);
     };
 
-    sendAndSchedule();
+    timer = setInterval(sendAndSchedule, 50);
     return Promise.resolve(stopListening);
   },
 
@@ -113,8 +115,8 @@ export const DemoAPI: API = {
     }
     await new Promise((r) => setTimeout(r, 100));
     return Promise.resolve({
-      name: "Fake device '" + uri + "'",
-      channels: ["x", "y", "z"],
+      name: "fake device '" + uri + "'",
+      channels: ["gmr.x", "gmr.y", "gmr.z"],
     });
   },
   disconnect: () => Promise.resolve(),
@@ -126,7 +128,7 @@ export const DemoAPI: API = {
 export class WebSerialAPI implements API {
   // class because I'm guessing we'll need some state
   type = "WebSerial" as const;
-  async listenToPackets(cb: (packet: DevicePacket) => void) {
+  async listenToPackets(_cb: (packet: DevicePacket) => void) {
     // WebSerial stuff
     throw new Error("not implemented");
     return Promise.resolve(function cleanup() {});
@@ -135,7 +137,7 @@ export class WebSerialAPI implements API {
     throw new Error("not implemented");
     return Promise.resolve([]);
   }
-  connectDevice(uri: string) {
+  connectDevice(_uri: string) {
     throw new Error("not implemented");
     return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
   }
@@ -149,7 +151,7 @@ export class WebSerialAPI implements API {
 export class WebSocketAPI implements API {
   // class because I'm guessing we'll need some state
   type = "WebSocket" as const;
-  async listenToPackets(cb: (packet: DevicePacket) => void) {
+  async listenToPackets(_cb: (packet: DevicePacket) => void) {
     // WebSocket stuff
     throw new Error("not implemented");
     return Promise.resolve(function cleanup() {});
@@ -158,7 +160,7 @@ export class WebSocketAPI implements API {
     throw new Error("not implemented");
     return Promise.resolve([]);
   }
-  connectDevice(uri: string) {
+  connectDevice(_uri: string) {
     throw new Error("not implemented");
     return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
   }
