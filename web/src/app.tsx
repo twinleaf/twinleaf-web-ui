@@ -3,32 +3,32 @@ import uPlot from "uplot";
 import {
   Button,
   Container,
+  Grid,
   Header,
+  Icon,
   Image,
+  Label,
   Menu,
   MenuItemProps,
+  Popup,
+  Table,
 } from "semantic-ui-react";
-import { useAPI, useFPS, useLogs, useWhatChanged } from "./hooks";
 import {
-  APIType,
-  DataDevicePacket,
-  DeviceId,
-  DeviceInfo,
-  DevicePacket,
-} from "./api";
-import { PollingWatchKind } from "typescript";
+  DataBuffer,
+  LogEntry,
+  useAPI,
+  useDevices,
+  useFPS,
+  useLogs,
+  useWhatChanged,
+} from "./hooks";
+import { APIType, DeviceId, DeviceInfo } from "./api";
 
 type ContentPane = "configure" | "plot" | "about";
 
 export const App = () => {
-  const api = useAPI();
-  const [devices, setDevices] = useState<[DeviceId, DeviceInfo][]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<
-    DeviceId | undefined
-  >();
-  const [logs, addLogMessage, clearLogs] = useLogs(100);
-
-  const dataBuffer = useRef<DataBuffer>();
+  const { api, changeAPIType } = useAPI();
+  const [logs, addLogMessage] = useLogs(100);
   const { setFPSRef } = useFPS(true);
 
   const [activePane, setActivePane] = useState<ContentPane>("configure");
@@ -36,144 +36,253 @@ export const App = () => {
   const oneMorePlot = () =>
     setPlotNames((x) => [...x, "sensor " + ("" + Math.random()).slice(3, 6)]);
 
-  // stop listening to Tauri events
-  const stopListening = useRef<() => void>();
-  const disconnect = async () => {
-    console.log("stop listening to", stopListening.current);
-    stopListening.current && stopListening.current();
-    await api.disconnect();
-    setConnectedDevice(undefined);
-  };
-  const connect = async (deviceId: DeviceId) => {
-    // TODO this isn't reentrant, we need another state bit for "busy" to hide the buttons and/or return early
-    if (connectedDevice) {
-      console.log("stop listening to", stopListening.current);
-      stopListening.current && stopListening.current();
-      await api.disconnect();
-      setConnectedDevice(undefined);
-    }
-    const info = await api.connectDevice(deviceId);
-    setConnectedDevice(deviceId);
+  const {
+    connect,
+    connectedDevice,
+    dataBuffer,
+    devices,
+    disconnect,
+    updateDevices,
+  } = useDevices(api, addLogMessage);
 
-    dataBuffer.current = new DataBuffer(info, 1000);
-
-    const onPacket = (packet: DevicePacket) => {
-      if (packet.packet_type === "data") {
-        dataBuffer.current!.addFrame(packet);
-      } else if (packet.packet_type === "log") {
-        console.log("log packet:", packet.log_type, packet.log_message);
-        addLogMessage({
-          log_type: packet.log_type,
-          log_message: packet.log_message,
-        });
-      } else {
-        throw new Error("received unknown packet type");
-      }
-    };
-
-    stopListening.current = await api.listenToPackets(onPacket);
+  const connectAndViewPlot = async (id: string) => {
+    await connect(id);
     setActivePane("plot");
-    return;
   };
-
-  const updateDevices = async () => {
-    await disconnect();
-    setDevices([]);
-    const deviceIds = await api.enumerateDevices();
-    const devicesAndInfo: [DeviceId, DeviceInfo][] = [];
-    for (const deviceId of deviceIds) {
-      // TODO what does a failed call here look like?
-      const deviceInfo = await api.connectDevice(deviceId);
-      devicesAndInfo.push([deviceId, deviceInfo]);
-      await api.disconnect();
-    }
-    setDevices(devicesAndInfo);
-  };
-  useEffect(() => {
-    updateDevices();
-  }, []);
 
   return (
-    <Container fluid={true}>
+    <>
       <TopBar
         activePane={activePane}
         setActivePane={setActivePane}
         setFPSRef={setFPSRef}
       />
-      {plotNames.map(
-        (name) =>
-          dataBuffer.current && (
-            <MultiChannelGraph
-              key={name}
-              dataBuffer={dataBuffer.current}
-              hidden={activePane !== "plot"}
-            />
-          )
-      )}
-      {activePane === "configure" ? (
-        <ConfigurePane
-          oneMorePlot={oneMorePlot}
-          devices={devices}
-          apiType={api.type}
-          connectedDevice={connectedDevice}
-          updateDevices={updateDevices}
-          connect={connect}
-          disconnect={disconnect}
-        />
-      ) : activePane === "about" ? (
-        "this is an about page, do we need this?"
-      ) : null}
-    </Container>
+      <Container>
+        {plotNames.map(
+          (name) =>
+            dataBuffer && (
+              <MultiChannelGraph
+                key={name}
+                dataBuffer={dataBuffer}
+                hidden={activePane !== "plot"}
+              />
+            )
+        )}
+        {activePane === "configure" ? (
+          <ConfigurePane
+            apiType={api.type}
+            changeAPIType={changeAPIType}
+            connect={connectAndViewPlot}
+            connectedDevice={connectedDevice}
+            devices={devices}
+            disconnect={disconnect}
+            logs={logs}
+            oneMorePlot={oneMorePlot}
+            updateDevices={updateDevices}
+          />
+        ) : activePane === "about" ? (
+          <h4>
+            <a href="https://twinleaf.com/" target="_blank">
+              Twinleaf website
+            </a>
+          </h4>
+        ) : null}
+      </Container>
+    </>
   );
 };
 
 type ConfigurePaneProps = {
-  oneMorePlot: () => void;
-  devices: [DeviceId, DeviceInfo][];
-  updateDevices: () => void;
   apiType: APIType;
-  connectedDevice: DeviceId | undefined;
+  changeAPIType: (apiType: APIType) => void;
   connect: (id: DeviceId) => Promise<void>;
+  connectedDevice: DeviceId | undefined;
+  devices: Record<DeviceId, DeviceInfo | undefined>;
   disconnect: () => Promise<void>;
+  logs: LogEntry[];
+  oneMorePlot: () => void;
+  updateDevices: () => void;
 };
 const ConfigurePane = ({
-  oneMorePlot,
-  devices,
-  updateDevices,
   apiType,
-  connectedDevice,
+  changeAPIType,
   connect,
+  connectedDevice,
+  devices,
   disconnect,
+  logs,
+  oneMorePlot,
+  updateDevices,
 }: ConfigurePaneProps) => {
   const connectedDeviceInfo =
-    connectedDevice && devices.find(([id, info]) => id === connectedDevice);
+    connectedDevice === undefined ? undefined : devices[connectedDevice];
+  const connectedName = connectedDeviceInfo?.name || connectedDevice;
 
   return (
     <>
       <Header as="h1">
-        {connectedDeviceInfo
-          ? "Connected to " + connectedDeviceInfo[1].name
-          : "Connect to a device"}
+        {connectedDevice
+          ? "Connected to " + connectedName
+          : "Not connected to a device"}
       </Header>
-      <div>
-        Currently using the {apiType} interface. <br />
-        Devices:{" "}
-        {devices.map(([id, info]) => (
-          <div key={id}>
-            {id} - {JSON.stringify(info, null, 2)}
-            {connectedDevice === id ? (
-              <Button onClick={disconnect}>Disconnect</Button>
-            ) : (
-              <Button onClick={() => connect(id)}>Connect</Button>
-            )}
-            <br />
-          </div>
-        ))}
-        <Button onClick={updateDevices}>Scan again for devices</Button>
-        <br />
-        <button onClick={oneMorePlot}>debug: Add Plot</button>
+      <Devices
+        changeAPIType={changeAPIType}
+        connect={connect}
+        connectedDevice={connectedDevice}
+        devices={devices}
+        apiType={apiType}
+        disconnect={disconnect}
+        updateDevices={updateDevices}
+      />
+      <div style={{ height: 300, overflowY: "auto" }}>
+        <code>
+          <pre>
+            {logs.map((x) => `${x.log_type}: ${x.log_message}`).join("\n")}
+          </pre>
+        </code>
       </div>
+      <button onClick={oneMorePlot}>Debug: add plot</button>
     </>
+  );
+};
+
+type DevicesProps = {
+  changeAPIType: (apiType: APIType) => void;
+  connect: (id: DeviceId) => Promise<void>;
+  connectedDevice: DeviceId | undefined;
+  devices: Record<DeviceId, DeviceInfo | undefined>;
+  disconnect: () => Promise<void>;
+  apiType: APIType;
+  updateDevices: () => void;
+};
+const Devices = (props: DevicesProps) => {
+  const {
+    changeAPIType,
+    connect,
+    connectedDevice,
+    devices,
+    disconnect,
+    updateDevices,
+    apiType,
+  } = props;
+  const connectedDeviceInfo =
+    connectedDevice === undefined ? undefined : devices[connectedDevice];
+  const connectedName = connectedDeviceInfo?.name || connectedDevice;
+
+  return (
+    <Table celled>
+      <Table.Header>
+        <Table.Row>
+          <Table.HeaderCell width={6}>Device</Table.HeaderCell>
+          <Table.HeaderCell width={4}>Device Info</Table.HeaderCell>
+          <Table.HeaderCell width={6}></Table.HeaderCell>
+        </Table.Row>
+      </Table.Header>
+
+      <Table.Body>
+        {Object.keys(devices).map((id) => (
+          <Table.Row key={id}>
+            <Table.Cell>
+              {connectedDevice === id && <Label ribbon>Connected</Label>}
+              {id}
+            </Table.Cell>
+            <Table.Cell>
+              <code>
+                <pre>
+                  {devices[id] ? JSON.stringify(devices[id], null, 2) : ""}
+                </pre>
+              </code>
+            </Table.Cell>
+            <Table.Cell>
+              {connectedDevice === id ? (
+                <>
+                  <Button onClick={disconnect}>Disconnect</Button>
+                </>
+              ) : (
+                <Button onClick={() => connect(id)}>Connect</Button>
+              )}
+            </Table.Cell>
+          </Table.Row>
+        ))}
+      </Table.Body>
+
+      <Table.Footer>
+        <Table.Row>
+          <Table.HeaderCell colSpan="3">
+            <Menu>
+              <Menu.Item>
+                <Button onClick={updateDevices}>Scan again for devices</Button>
+              </Menu.Item>
+              <Menu.Item>
+                using {apiType === "Tauri" ? "Rust Proxy" : apiType} to find
+                devices
+                <Popup
+                  trigger={<Icon name="help" />}
+                  hoverable
+                  position="top center"
+                  wide="very"
+                >
+                  <Grid centered divided columns="equal">
+                    {typeof window.__TAURI__ !== "undefined" && (
+                      <Grid.Column textAlign="center" verticalAlign="top">
+                        <Header as="h4">Native Serial</Header>
+                        <p style={{ height: 120 }}>
+                          Discover Twinleaf devices over serial via Rust proxy
+                        </p>
+                        {apiType === "Tauri" ? (
+                          <Button disabled>in use</Button>
+                        ) : (
+                          <Button onClick={() => changeAPIType("Tauri")}>
+                            switch
+                          </Button>
+                        )}
+                      </Grid.Column>
+                    )}
+                    <Grid.Column textAlign="center" verticalAlign="top">
+                      <Header as="h4">WebSerial</Header>
+                      <p style={{ height: 120 }}>
+                        Discover Twinleaf devices over TIO via WebSerial
+                      </p>
+                      {apiType === "WebSerial" ? (
+                        <Button disabled>in use</Button>
+                      ) : (
+                        <Button>switch (experimental)</Button>
+                      )}
+                    </Grid.Column>
+                    <Grid.Column textAlign="center" verticalAlign="top">
+                      <Header as="h4">WebSocket</Header>
+                      <p style={{ height: 120 }}>
+                        Discover Twinleaf devices through a tio-proxy via
+                        WebSocket communication
+                      </p>
+                      {apiType === "WebSocket" ? (
+                        <Button disabled>in use</Button>
+                      ) : (
+                        <Button disabled>not yet</Button>
+                      )}
+                    </Grid.Column>
+                    <Grid.Column textAlign="center" verticalAlign="top">
+                      <Header as="h4">Demo</Header>
+                      <p style={{ height: 120 }}>
+                        Don't have a Twinleaf device? Use fake devices to see
+                        how things work.
+                      </p>
+                      {apiType === "Demo" ? (
+                        <Button disabled>in use</Button>
+                      ) : (
+                        <Button onClick={() => changeAPIType("Demo")}>
+                          switch
+                        </Button>
+                      )}
+                    </Grid.Column>
+                  </Grid>
+                </Popup>
+              </Menu.Item>
+            </Menu>
+          </Table.HeaderCell>
+        </Table.Row>
+      </Table.Footer>
+    </Table>
   );
 };
 
@@ -186,13 +295,13 @@ const TopBar = ({
   setActivePane: (pane: ContentPane) => void;
   setFPSRef: (el: HTMLElement | null) => void;
 }) => {
-  const handleItemClick = (e: MouseEvent, { name }: MenuItemProps) => {
+  const handleItemClick = (_: MouseEvent, { name }: MenuItemProps) => {
     setActivePane(name as ContentPane);
   };
   return (
     <Menu inverted style={{ backgroundColor: "#1b1c1d" }}>
       <Image
-        src="/img/Twinleaf-Logo-White.png"
+        src="./img/Twinleaf-Logo-White.png"
         size="small"
         style={{ margin: "10px" }}
       />
@@ -243,7 +352,6 @@ const MultiChannelGraph = (props: MultiChannelGraphProps) => {
     setPlotting(true);
   };
   const stopPlotting = () => {
-    console.log("stopping updating plot", plot.current);
     setPlotting(false);
     plot.current?.stop && plot.current.stop();
   };
@@ -253,7 +361,6 @@ const MultiChannelGraph = (props: MultiChannelGraphProps) => {
     if (el) {
       el.innerHTML = "";
       plot.current = makePlot(el, dataBuffer);
-      console.log("creating plot...", dataBuffer, el);
       startPlotting();
       return function cleanup() {
         stopPlotting();
@@ -275,44 +382,6 @@ const MultiChannelGraph = (props: MultiChannelGraphProps) => {
   );
 };
 
-// always make a new buffer when switching devices
-class DataBuffer {
-  size: number;
-  data: number[][];
-  sampleNums: number[] = [];
-  deviceName: string;
-  channelNames: string[];
-  sampleReceivedTimes: number[] = [];
-  constructor(info: DeviceInfo, size = 1000) {
-    this.deviceName = info.name;
-    this.data = [];
-    this.channelNames = info.channels;
-    for (const _ of this.channelNames) {
-      this.data.push([]);
-    }
-    this.size = size;
-  }
-  addFrame = (frame: DataDevicePacket) => {
-    for (let i = 0; i < this.channelNames.length; i++) {
-      this.data[i].push(frame.data_floats[i]);
-      if (this.data[i].length > this.size) this.data[i].shift();
-    }
-    this.sampleReceivedTimes.push(performance.now());
-    this.sampleNums.push(frame.sample_number);
-    if (this.sampleNums.length > this.size) {
-      this.sampleNums.shift();
-      this.sampleReceivedTimes.shift();
-    }
-  };
-  observedHz = () => {
-    if (!this.sampleReceivedTimes.length) return 0;
-    const lastN = this.sampleReceivedTimes.slice(-11);
-    const dt = lastN[lastN.length - 1] - lastN[0];
-    const fps = ((lastN.length - 1) / dt) * 1000;
-    return Math.round(fps * 100) / 100;
-  };
-}
-
 function makePlot(
   el: HTMLElement,
   dataBuffer: DataBuffer
@@ -332,7 +401,7 @@ function makePlot(
     x: {},
     y: {
       auto: false,
-      range: [0, 1] as [number, number],
+      range: [-1, 1] as [number, number],
     },
   };
 
@@ -356,6 +425,10 @@ function makePlot(
 
   let u = new uPlot(opts, [sampleNums, ...data], el);
 
+  function fpsFormat(num: number) {
+    return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
+  }
+
   // TODO move this into a hook or stateful object
   // TODO debounce this, window resize behavior feels bad
   let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
@@ -371,14 +444,17 @@ function makePlot(
     u.setData([sampleNums, ...data], false);
     u.setScale("x", scale);
     (el.querySelector(".u-title")! as HTMLDivElement).innerText =
-      dataBuffer.deviceName + " - " + observedHz() + " Hz";
+      dataBuffer.deviceName +
+      " - receiving at " +
+      fpsFormat(observedHz()) +
+      " Hz";
 
     scheduledPlotUpdate = requestAnimationFrame(update);
   }
 
   // TODO move this into a hook
   let lastResize = 0;
-  window.addEventListener("resize", (e) => {
+  window.addEventListener("resize", () => {
     // debounce to prevent Tauri crash
     // a real debounce would set a timer too
     if (Date.now() < lastResize + 1000) {
