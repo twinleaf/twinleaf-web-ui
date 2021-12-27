@@ -101,10 +101,13 @@ impl Device {
 
     pub fn connect(uri: String) -> Result<Device> {
         if uri.starts_with("serial://") {
+            println!("calling connect_serial {}", uri);
             Device::connect_serial(uri)
         } else if uri.starts_with("tcp://") {
+            println!("calling connect_tcp {}", uri);
             Device::connect_tcp(uri)
         } else if uri.starts_with("dummy://") {
+            println!("calling connect_dummy {}", uri);
             Device::connect_dummy()
         } else {
             Err(anyhow!("unsupported URI schema: {}", uri))

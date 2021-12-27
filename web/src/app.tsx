@@ -17,7 +17,7 @@ import {
   DataBuffer,
   LogEntry,
   useAPI,
-  useConnectedDevice,
+  useDevices,
   useFPS,
   useLogs,
   useWhatChanged,
@@ -28,10 +28,7 @@ type ContentPane = "configure" | "plot" | "about";
 
 export const App = () => {
   const { api, changeAPIType } = useAPI();
-  const [devices, setDevices] = useState<[DeviceId, DeviceInfo][]>([]);
-
   const [logs, addLogMessage] = useLogs(100);
-
   const { setFPSRef } = useFPS(true);
 
   const [activePane, setActivePane] = useState<ContentPane>("configure");
@@ -39,35 +36,19 @@ export const App = () => {
   const oneMorePlot = () =>
     setPlotNames((x) => [...x, "sensor " + ("" + Math.random()).slice(3, 6)]);
 
-  const { connect, disconnect, connectedDevice, dataBuffer } =
-    useConnectedDevice(api, addLogMessage);
+  const {
+    connect,
+    connectedDevice,
+    dataBuffer,
+    devices,
+    disconnect,
+    updateDevices,
+  } = useDevices(api, addLogMessage);
 
   const connectAndViewPlot = async (id: string) => {
     await connect(id);
     setActivePane("plot");
   };
-
-  const updateDevices = async () => {
-    await disconnect();
-    setDevices([]);
-    const deviceIds = await api.enumerateDevices();
-    const devicesAndInfo: [DeviceId, DeviceInfo][] = [];
-    for (const deviceId of deviceIds) {
-      // TODO what does a failed call here look like?
-      const deviceInfo = await api.connectDevice(deviceId);
-      devicesAndInfo.push([deviceId, deviceInfo]);
-      await api.disconnect();
-    }
-    setDevices(devicesAndInfo);
-  };
-
-  // Update the reference in the useEffect closure;
-  const updateDevicesRef = useRef(updateDevices);
-  updateDevicesRef.current = updateDevices;
-  useEffect(() => {
-    updateDevicesRef.current();
-    // every time api changes, call updateDevices
-  }, [api]);
 
   return (
     <>
@@ -116,7 +97,7 @@ type ConfigurePaneProps = {
   changeAPIType: (apiType: APIType) => void;
   connect: (id: DeviceId) => Promise<void>;
   connectedDevice: DeviceId | undefined;
-  devices: [DeviceId, DeviceInfo][];
+  devices: Record<DeviceId, DeviceInfo | undefined>;
   disconnect: () => Promise<void>;
   logs: LogEntry[];
   oneMorePlot: () => void;
@@ -134,14 +115,15 @@ const ConfigurePane = ({
   updateDevices,
 }: ConfigurePaneProps) => {
   const connectedDeviceInfo =
-    connectedDevice && devices.find(([id, info]) => id === connectedDevice);
+    connectedDevice === undefined ? undefined : devices[connectedDevice];
+  const connectedName = connectedDeviceInfo?.name || connectedDevice;
 
   return (
     <>
       <Header as="h1">
-        {connectedDeviceInfo
-          ? "Connected to " + connectedDeviceInfo[1].name
-          : "Connect to a device"}
+        {connectedDevice
+          ? "Connected to " + connectedName
+          : "Not connected to a device"}
       </Header>
       <Devices
         changeAPIType={changeAPIType}
@@ -159,6 +141,7 @@ const ConfigurePane = ({
           </pre>
         </code>
       </div>
+      <button onClick={oneMorePlot}>Debug: add plot</button>
     </>
   );
 };
@@ -167,7 +150,7 @@ type DevicesProps = {
   changeAPIType: (apiType: APIType) => void;
   connect: (id: DeviceId) => Promise<void>;
   connectedDevice: DeviceId | undefined;
-  devices: [DeviceId, DeviceInfo][];
+  devices: Record<DeviceId, DeviceInfo | undefined>;
   disconnect: () => Promise<void>;
   apiType: APIType;
   updateDevices: () => void;
@@ -183,32 +166,33 @@ const Devices = (props: DevicesProps) => {
     apiType,
   } = props;
   const connectedDeviceInfo =
-    connectedDevice && devices.find(([id, _]) => id === connectedDevice);
+    connectedDevice === undefined ? undefined : devices[connectedDevice];
+  const connectedName = connectedDeviceInfo?.name || connectedDevice;
 
   return (
     <Table celled>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell width={6}>Device</Table.HeaderCell>
-          <Table.HeaderCell width={4}>Channels</Table.HeaderCell>
+          <Table.HeaderCell width={4}>Device Info</Table.HeaderCell>
           <Table.HeaderCell width={6}></Table.HeaderCell>
         </Table.Row>
       </Table.Header>
 
       <Table.Body>
-        {devices.map(([id, info]) => (
+        {Object.keys(devices).map((id) => (
           <Table.Row key={id}>
             <Table.Cell>
-              {connectedDevice === id ? (
-                <>
-                  <Label ribbon>Connected</Label>
-                  {info.name}
-                </>
-              ) : (
-                info.name
-              )}
+              {connectedDevice === id && <Label ribbon>Connected</Label>}
+              {id}
             </Table.Cell>
-            <Table.Cell>{info.channels}</Table.Cell>
+            <Table.Cell>
+              <code>
+                <pre>
+                  {devices[id] ? JSON.stringify(devices[id], null, 2) : ""}
+                </pre>
+              </code>
+            </Table.Cell>
             <Table.Cell>
               {connectedDevice === id ? (
                 <>
@@ -262,7 +246,7 @@ const Devices = (props: DevicesProps) => {
                       {apiType === "WebSerial" ? (
                         <Button disabled>in use</Button>
                       ) : (
-                        <Button disabled>not yet</Button>
+                        <Button>switch (experimental)</Button>
                       )}
                     </Grid.Column>
                     <Grid.Column textAlign="center" verticalAlign="top">

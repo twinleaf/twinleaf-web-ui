@@ -15,8 +15,8 @@ import {
 const buildApi = (apiType: APIType): API => {
   if (apiType === "Demo") return DemoAPI; // stateless
   if (apiType === "Tauri") return TauriAPI; // stateless
-  if (apiType === "WebSerial") return new WebSerialAPI();
-  if (apiType === "WebSocket") return new WebSocketAPI(); // TODO this may need connection details?
+  if (apiType === "WebSerial") return WebSerialAPI.getInstance();
+  if (apiType === "WebSocket") return WebSocketAPI.getInstance(); // TODO this may need connection details?
   throw new Error("Unknown API Type " + apiType);
 };
 
@@ -96,15 +96,20 @@ export class DataBuffer {
   };
 }
 
-export const useConnectedDevice = (
+export const useDevices = (
   api: API,
   addLogMessage: (e: LogEntry) => void
 ): {
   connect: (id: DeviceId) => Promise<void>;
-  disconnect: () => Promise<void>;
   connectedDevice: string | undefined;
   dataBuffer: DataBuffer | undefined;
+  devices: Record<DeviceId, DeviceInfo | undefined>;
+  disconnect: () => Promise<void>;
+  updateDevices: () => void;
 } => {
+  const [devices, setDevices] = useState<
+    Record<DeviceId, DeviceInfo | undefined>
+  >({});
   const [connectedDevice, setConnectedDevice] = useState<
     DeviceId | undefined
   >();
@@ -124,6 +129,7 @@ export const useConnectedDevice = (
     }
     const info = await api.connectDevice(deviceId);
     setConnectedDevice(deviceId);
+    setDevices((devices) => ({ ...devices, [deviceId]: info }));
 
     dataBuffer.current = new DataBuffer(info, 1000);
 
@@ -144,11 +150,33 @@ export const useConnectedDevice = (
     stopListening.current = await api.listenToPackets(onPacket);
     return;
   };
+
+  // warning: not reentrant!
+  const updateDevices = async () => {
+    await disconnect();
+    setDevices({});
+    const deviceIds = await api.enumerateDevices();
+    const devices = Object.fromEntries(deviceIds.map((id) => [id, undefined]));
+    setDevices(devices);
+    // we could connect+disconnect each devices here to update deviceInfo, but only if
+    // it's safe to connect to arbitrary devices, which may not be Twinleaf devices.
+  };
+
+  // Update the reference in the useEffect closure;
+  const updateDevicesRef = useRef(updateDevices);
+  updateDevicesRef.current = updateDevices;
+  useEffect(() => {
+    updateDevicesRef.current();
+    // every time api changes, call updateDevices
+  }, [api]);
+
   return {
     connect,
+    devices,
     disconnect,
     connectedDevice,
     dataBuffer: dataBuffer.current,
+    updateDevices,
   };
 };
 
