@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import uPlot from "uplot";
 import {
   API,
   APIType,
@@ -63,9 +64,11 @@ export class DataBuffer {
   size: number;
   data: number[][];
   sampleNums: number[] = [];
+  positions: number[] = [];
   deviceName: string;
   channelNames: string[];
   sampleReceivedTimes: number[] = [];
+  alreadySeen: WeakSet<any> = new WeakSet();
   constructor(info: DeviceInfo, size = 1000) {
     this.deviceName = info.name;
     this.data = [];
@@ -74,8 +77,27 @@ export class DataBuffer {
       this.data.push([]);
     }
     this.size = size;
+    this.positions = [...Array(size).keys()].map((x) => x - size);
+  }
+  setWindowSize(size: number) {
+    this.size = size;
+    for (let i = 0; i < this.channelNames.length; i++) {
+      this.data[i] = this.data[i].slice(-size);
+    }
+    this.sampleReceivedTimes = this.sampleReceivedTimes.slice(-size);
+    this.sampleNums = this.sampleNums.slice(-size);
+    this.positions = [...Array(this.sampleNums.length).keys()].map(
+      (x) => x - this.sampleNums.length
+    );
+    this.alreadySeen = new WeakSet();
+  }
+  alreadySeenBy(reader: Object): boolean {
+    const seen = this.alreadySeen.has(reader);
+    this.alreadySeen.add(reader);
+    return seen;
   }
   addFrame = (frame: DataDevicePacket) => {
+    this.alreadySeen = new WeakSet();
     for (let i = 0; i < this.channelNames.length; i++) {
       this.data[i].push(frame.data_floats[i]);
       if (this.data[i].length > this.size) this.data[i].shift();
@@ -86,8 +108,11 @@ export class DataBuffer {
       this.sampleNums.shift();
       this.sampleReceivedTimes.shift();
     }
+    while (this.positions.length < this.sampleNums.length) {
+      this.positions.unshift(this.positions[0] - 1);
+    }
   };
-  observedHz = (n = 200) => {
+  observedHz = (n = 1000) => {
     if (!this.sampleReceivedTimes.length) return 0;
     const lastN = this.sampleReceivedTimes.slice(-(n + 1));
     const dt = lastN[lastN.length - 1] - lastN[0];
@@ -137,7 +162,6 @@ export const useDevices = (
       if (packet.packet_type === "data") {
         dataBuffer.current!.addFrame(packet);
       } else if (packet.packet_type === "log") {
-        console.log("log packet:", packet.log_type, packet.log_message);
         addLogMessage({
           log_type: packet.log_type,
           log_message: packet.log_message,
@@ -251,3 +275,138 @@ export const useWhatChanged = (
 
   prev.current = props;
 };
+
+export const useUplot = (dataBuffer: DataBuffer) => {
+  const plot = useRef<ReturnType<typeof makePlot>>();
+  const [plotting, setPlotting] = useState(false);
+  const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
+
+  const start = () => {
+    if (!plot.current?.start) return;
+    plot.current.start();
+    setPlotting(true);
+  };
+  const stop = () => {
+    setPlotting(false);
+    plot.current?.stop && plot.current.stop();
+  };
+
+  useWhatChanged({ dataBuffer, el }, "running create plot useEffect");
+  useEffect(() => {
+    if (el) {
+      plot.current = makePlot(el, dataBuffer);
+      start();
+      return function cleanup() {
+        plot.current?.destroy();
+        plot.current = undefined;
+        el.innerHTML = "";
+      };
+    }
+    return;
+  }, [dataBuffer, el]);
+  return { setPlotEl, start, stop, plotting };
+};
+
+/*
+ * The plot does not participate in React redraws.
+ * Be sure to call destroy when the DOM element disappears.
+ */
+export function makePlot(
+  el: HTMLElement,
+  dataBuffer: DataBuffer
+): { plot: uPlot; start: () => void; stop: () => void; destroy: () => void } {
+  function getSize() {
+    // TODO use el.clientWidth in the future + a resizeObserver
+    return {
+      width: window.innerWidth - 100,
+      height: Math.floor((window.innerWidth - 100) / 3),
+    };
+  }
+
+  const scales = {
+    x: {
+      //range: [0, dataBuffer.size] as [number, number],
+      time: false,
+    },
+    y: {
+      auto: false,
+      range: [-1, 1] as [number, number],
+    },
+  };
+
+  const colors = ["red", "green", "blue", "yellow", "orange", "purple"];
+
+  const opts: uPlot.Options = {
+    title: dataBuffer.deviceName,
+    ...getSize(),
+    pxAlign: 0,
+    ms: 1 as const,
+    scales,
+    series: [
+      {},
+      ...dataBuffer.channelNames.map((name, i) => ({
+        stroke: colors[i % colors.length],
+        //        paths: uPlot.paths.points!(),
+        spanGaps: true,
+        pxAlign: 0,
+        points: { show: false },
+        label: name,
+      })),
+    ],
+  };
+
+  let u = new uPlot(opts, [dataBuffer.positions, ...dataBuffer.data], el);
+
+  function fpsFormat(num: number) {
+    return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
+  }
+
+  let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
+  function update() {
+    if (dataBuffer.alreadySeenBy(u)) {
+      scheduledPlotUpdate = requestAnimationFrame(update);
+      return;
+    }
+
+    const scale = {
+      min: Math.min(dataBuffer.positions[0], -dataBuffer.size + 1),
+      max: 0,
+    };
+
+    u.setData([dataBuffer.positions, ...dataBuffer.data], false);
+    u.setScale("x", scale);
+    (el.querySelector(".u-title")! as HTMLDivElement).innerText =
+      dataBuffer.deviceName +
+      " - receiving at " +
+      fpsFormat(dataBuffer.observedHz()) +
+      " Hz";
+
+    scheduledPlotUpdate = requestAnimationFrame(update);
+  }
+
+  let plotStillExists = true;
+  let scheduledResizeP: Promise<void> | undefined;
+  function onWindowResize() {
+    if (scheduledResizeP) return;
+    scheduledResizeP = new Promise(async (r) => {
+      await new Promise((r) => setTimeout(r, 100));
+      scheduledResizeP = undefined;
+      if (!plotStillExists) return;
+      u.setSize(getSize());
+    });
+  }
+
+  window.addEventListener("resize", onWindowResize);
+
+  function stopUpdating() {
+    cancelAnimationFrame(scheduledPlotUpdate);
+  }
+
+  function destroy() {
+    stopUpdating();
+    window.removeEventListener("resize", onWindowResize);
+    u.destroy();
+  }
+
+  return { plot: u, start: update, stop: stopUpdating, destroy };
+}

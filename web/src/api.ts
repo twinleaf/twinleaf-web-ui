@@ -74,8 +74,21 @@ export const TauriAPI: API = {
   },
 };
 
+function randn_bm() {
+  let u = 0,
+    v = 0;
+  while (u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+  while (v === 0) v = Math.random();
+  let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  num = num / 10.0 + 0.5; // Translate to 0 -> 1
+  if (num > 1 || num < 0) return randn_bm(); // resample between 0 and 1
+  return num;
+}
+
 let demoInterval = 100;
 let demoPacketsPerInterval = 10;
+let demoT0 = 0;
+let demoSent = 0;
 export const DemoAPI: API = {
   type: "Demo",
   listenToPackets: (cb: (packet: DevicePacket) => void) => {
@@ -86,9 +99,9 @@ export const DemoAPI: API = {
         packet_type: "data",
         sample_number: sampleNumber++,
         data_floats: [
-          2 * Math.random() - 1,
-          2 * Math.random() - 1,
-          2 * Math.random() - 1,
+          2 * randn_bm() - 1,
+          2 * randn_bm() - 1,
+          2 * randn_bm() - 1,
         ],
       });
     const sendLogPacket = () =>
@@ -100,7 +113,19 @@ export const DemoAPI: API = {
     let timer: ReturnType<typeof setTimeout>;
     const sendAndSchedule = () => {
       sendLogPacket();
-      for (let i = 0; i < demoPacketsPerInterval; i++) {
+      const now = performance.now();
+      if (demoT0 === 0) demoT0 = now;
+      const delta = now - demoT0;
+      let toSend =
+        Math.round((delta * demoPacketsPerInterval) / demoInterval) - demoSent;
+      demoSent += toSend;
+      if (toSend > 100000) {
+        console.log("Demo data generation too far behind, giving up");
+        demoT0 = performance.now();
+        demoSent = 0;
+        toSend = 0;
+      }
+      for (let i = 0; i < toSend; i++) {
         sendDataPacket();
       }
     };
@@ -128,9 +153,11 @@ export const DemoAPI: API = {
       demoInterval = 100;
       demoPacketsPerInterval = 10;
     } else if (uri.includes("1000Hz")) {
-      demoInterval = 50;
-      demoPacketsPerInterval = 50;
+      demoInterval = 20;
+      demoPacketsPerInterval = 20;
     }
+    demoSent = 0;
+    demoT0 = 0;
     await new Promise((r) => setTimeout(r, 100));
     return Promise.resolve({
       name: "demo '" + uri + "'",
