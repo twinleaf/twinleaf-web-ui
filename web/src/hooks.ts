@@ -77,7 +77,7 @@ export class DataBuffer {
       this.data.push([]);
     }
     this.size = size;
-    this.positions = [...Array(size).keys()].map((x) => x - size);
+    this.positions = [];
   }
   setWindowSize(size: number) {
     this.size = size;
@@ -109,15 +109,21 @@ export class DataBuffer {
       this.sampleReceivedTimes.shift();
     }
     while (this.positions.length < this.sampleNums.length) {
-      this.positions.unshift(this.positions[0] - 1);
+      this.positions.unshift((this.positions[0] || 0) - 1);
     }
   };
+  // This is a hack for data souces which don't send timestamps
+  // and send data more frequently that the refresh rate.
+  // If all data source send timestamps we can plot more honestly
+  // and stil not drop frames;
   observedHz = (n = 1000) => {
     if (!this.sampleReceivedTimes.length) return 0;
     const lastN = this.sampleReceivedTimes.slice(-(n + 1));
     const dt = lastN[lastN.length - 1] - lastN[0];
+    // this math is broken for bunched/bundled delivery of packets
     const fps = ((lastN.length - 1) / dt) * 1000;
-    return fps;
+    if (isFinite(fps)) return fps;
+    return 0;
   };
 }
 
@@ -318,8 +324,8 @@ export function makePlot(
   function getSize() {
     // TODO use el.clientWidth in the future + a resizeObserver
     return {
-      width: window.innerWidth - 100,
-      height: Math.floor((window.innerWidth - 100) / 3),
+      width: window.innerWidth - 40,
+      height: Math.floor((window.innerWidth - 40) / 3),
     };
   }
 
@@ -362,18 +368,29 @@ export function makePlot(
   }
 
   let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
-  function update() {
-    if (dataBuffer.alreadySeenBy(u)) {
-      scheduledPlotUpdate = requestAnimationFrame(update);
-      return;
+  let lastDataUpdate = 0;
+  function update(t = performance.now()) {
+    const observedHz = dataBuffer.observedHz();
+    let xs = dataBuffer.positions;
+    if (
+      observedHz &&
+      dataBuffer.sampleReceivedTimes.length > 30 &&
+      dataBuffer.alreadySeenBy(u)
+    ) {
+      // do an interpolated update!
+      const delta = (t - lastDataUpdate) / 1000;
+      const expectedDataPoints = observedHz * delta;
+      xs = dataBuffer.positions.map((x) => x - expectedDataPoints);
+    } else {
+      lastDataUpdate = t;
     }
 
     const scale = {
-      min: Math.min(dataBuffer.positions[0], -dataBuffer.size + 1),
+      min: -dataBuffer.size + 1,
       max: 0,
     };
 
-    u.setData([dataBuffer.positions, ...dataBuffer.data], false);
+    u.setData([xs, ...dataBuffer.data], false);
     u.setScale("x", scale);
     (el.querySelector(".u-title")! as HTMLDivElement).innerText =
       dataBuffer.deviceName +

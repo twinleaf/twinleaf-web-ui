@@ -376,7 +376,7 @@ const Slider = ({ min, max, onChange, initial }: SliderProps) => {
     onChange(e.target.valueAsNumber);
   };
   return (
-    <Input
+    <input
       value={initial}
       onChange={_onChange}
       type="range"
