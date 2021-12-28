@@ -35158,6 +35158,8 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   var import_react41 = __toESM(require_react());
 
   // web/src/api.ts
+  var encoder = new TextEncoder();
+  var decoder = new TextDecoder();
   var TauriAPI = {
     type: "Tauri",
     listenToPackets: (cb) => {
@@ -35173,9 +35175,9 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       console.log(resp);
       return resp;
     },
-    connectDevice: async (_uri) => {
+    connectDevice: async (uri) => {
       const resp = await i9("connect_device", {
-        uri: "dummy://"
+        uri
       });
       console.log(resp);
       return resp;
@@ -35185,6 +35187,8 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       console.log(resp);
     }
   };
+  var demoInterval = 100;
+  var demoPacketsPerInterval = 10;
   var DemoAPI = {
     type: "Demo",
     listenToPackets: (cb) => {
@@ -35192,7 +35196,11 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       const sendDataPacket = () => cb({
         packet_type: "data",
         sample_number: sampleNumber++,
-        data_floats: [Math.random(), Math.random(), Math.random()]
+        data_floats: [
+          2 * Math.random() - 1,
+          2 * Math.random() - 1,
+          2 * Math.random() - 1
+        ]
       });
       const sendLogPacket = () => cb({
         packet_type: "log",
@@ -35201,9 +35209,8 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       });
       let timer;
       const sendAndSchedule = () => {
-        console.log("send");
         sendLogPacket();
-        for (let i10 = 0; i10 < 50; i10++) {
+        for (let i10 = 0; i10 < demoPacketsPerInterval; i10++) {
           sendDataPacket();
         }
       };
@@ -35211,41 +35218,154 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         console.log("clearing timeout for fake demo data generation");
         clearInterval(timer);
       };
-      timer = setInterval(sendAndSchedule, 50);
+      timer = setInterval(sendAndSchedule, demoInterval);
       return Promise.resolve(stopListening);
     },
     enumerateDevices: async () => {
       await new Promise((r7) => setTimeout(r7, 100));
-      return Promise.resolve(["dummy1", "dummy2"]);
+      return Promise.resolve(["dummy 10Hz", "dummy 100Hz", "dummy 1000Hz"]);
     },
     connectDevice: async (uri) => {
       if (uri.slice(0, 5) !== "dummy") {
         throw new Error("Demo API can only connect to dummy data source");
       }
+      if (uri.includes("10Hz")) {
+        demoInterval = 100;
+        demoPacketsPerInterval = 1;
+      } else if (uri.includes("100Hz")) {
+        demoInterval = 100;
+        demoPacketsPerInterval = 10;
+      } else if (uri.includes("1000Hz")) {
+        demoInterval = 50;
+        demoPacketsPerInterval = 50;
+      }
       await new Promise((r7) => setTimeout(r7, 100));
       return Promise.resolve({
-        name: "fake device '" + uri + "'",
+        name: "demo '" + uri + "'",
         channels: ["gmr.x", "gmr.y", "gmr.z"]
       });
     },
     disconnect: () => Promise.resolve()
   };
+  async function sendHeartbeat(writer) {
+    const data = Uint8Array.from([
+      192,
+      5,
+      0,
+      0,
+      0,
+      46,
+      47,
+      154,
+      22,
+      192
+    ]);
+    await writer.write(data);
+  }
+  function processPacket(pkt) {
+    if (pkt.byteLength < 8)
+      return;
+    if (pkt[0] != 1)
+      return;
+    const payloadSize = pkt[2] + 256 * pkt[3];
+    if (payloadSize + 8 < pkt.byteLength || payloadSize <= 5)
+      return;
+    console.log("LOG:", decoder.decode(pkt.subarray(9, payloadSize + 4)));
+    const log_message = decoder.decode(pkt.subarray(9, payloadSize + 4));
+    return {
+      packet_type: "log",
+      log_type: "warn",
+      log_message
+    };
+  }
   var WebSerialAPI = class {
     constructor() {
       this.type = "WebSerial";
+      this.breakout = false;
+    }
+    static getInstance() {
+      if (!this.instance) {
+        this.instance = new WebSerialAPI();
+      }
+      return this.instance;
     }
     async listenToPackets(_cb) {
       throw new Error("not implemented");
       return Promise.resolve(function cleanup() {
       });
     }
-    enumerateDevices() {
-      throw new Error("not implemented");
-      return Promise.resolve([]);
+    async enumerateDevices() {
+      let port;
+      try {
+        port = await navigator.serial.requestPort();
+      } catch (e4) {
+        return Object.keys(this.ports);
+      }
+      let alreadyAdded = false;
+      for (const port2 of Object.values(this.ports)) {
+        if (this.port === port2)
+          alreadyAdded = true;
+      }
+      if (alreadyAdded) {
+        return Object.keys(this.ports);
+      }
+      this.ports["serial-device-" + Object.keys(this.ports).length] = this.port;
+      return Object.keys(this.ports);
     }
-    connectDevice(_uri) {
-      throw new Error("not implemented");
-      return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
+    async connectDevice(uri) {
+      if (Object.keys(this.ports).includes(uri)) {
+        throw new Error("No such serial port as " + uri);
+      }
+      const port = this.ports[uri];
+      this.port = port;
+      await port.open({ baudRate: 115200, bufferSize: 4096 });
+      if (!port.writable) {
+        throw new Error("the port is supposed to be writeable");
+      }
+      await sendHeartbeat(port.writable.getWriter());
+      this.receiveLoop = this.receive(port);
+      return Promise.resolve({
+        name: "serial port name TODO",
+        channels: ["TODOa"]
+      });
+    }
+    async receive(port) {
+      var curPacket = [];
+      while (port.readable && !this.breakout) {
+        let reader = port.readable.getReader();
+        try {
+          while (!this.breakout) {
+            let escape = false;
+            const { value, done } = await reader.read();
+            if (done || this.breakout || value === void 0)
+              break;
+            value.forEach((byte) => {
+              if (byte === 192) {
+                processPacket(Uint8Array.from(curPacket));
+                curPacket = [];
+                escape = false;
+              } else {
+                if (escape) {
+                  escape = false;
+                  if (byte === 220)
+                    curPacket.push(192);
+                  if (byte === 221)
+                    curPacket.push(219);
+                } else {
+                  if (byte === 219)
+                    escape = true;
+                  else
+                    curPacket.push(byte);
+                }
+              }
+            });
+          }
+        } catch (error) {
+          console.log("ERROR:", error);
+        } finally {
+          reader.releaseLock();
+        }
+      }
     }
     async disconnect() {
       throw new Error("not implemented");
@@ -35254,6 +35374,12 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   var WebSocketAPI = class {
     constructor() {
       this.type = "WebSocket";
+    }
+    static getInstance() {
+      if (!this.instance) {
+        this.instance = new WebSocketAPI();
+      }
+      return this.instance;
     }
     async listenToPackets(_cb) {
       throw new Error("not implemented");
@@ -35280,9 +35406,9 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     if (apiType === "Tauri")
       return TauriAPI;
     if (apiType === "WebSerial")
-      return new WebSerialAPI();
+      return WebSerialAPI.getInstance();
     if (apiType === "WebSocket")
-      return new WebSocketAPI();
+      return WebSocketAPI.getInstance();
     throw new Error("Unknown API Type " + apiType);
   };
   var useAPI = (initial) => {
@@ -35345,7 +35471,8 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       this.size = size;
     }
   };
-  var useConnectedDevice = (api, addLogMessage) => {
+  var useDevices = (api, addLogMessage) => {
+    const [devices, setDevices] = (0, import_react41.useState)({});
     const [connectedDevice, setConnectedDevice] = (0, import_react41.useState)();
     const stopListening = (0, import_react41.useRef)();
     const dataBuffer = (0, import_react41.useRef)();
@@ -35362,6 +35489,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       }
       const info = await api.connectDevice(deviceId);
       setConnectedDevice(deviceId);
+      setDevices((devices2) => ({ ...devices2, [deviceId]: info }));
       dataBuffer.current = new DataBuffer(info, 1e3);
       const onPacket = (packet) => {
         if (packet.packet_type === "data") {
@@ -35379,11 +35507,25 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       stopListening.current = await api.listenToPackets(onPacket);
       return;
     };
+    const updateDevices = async () => {
+      await disconnect();
+      setDevices({});
+      const deviceIds = await api.enumerateDevices();
+      const devices2 = Object.fromEntries(deviceIds.map((id) => [id, void 0]));
+      setDevices(devices2);
+    };
+    const updateDevicesRef = (0, import_react41.useRef)(updateDevices);
+    updateDevicesRef.current = updateDevices;
+    (0, import_react41.useEffect)(() => {
+      updateDevicesRef.current();
+    }, [api]);
     return {
       connect,
+      devices,
       disconnect,
       connectedDevice,
-      dataBuffer: dataBuffer.current
+      dataBuffer: dataBuffer.current,
+      updateDevices
     };
   };
   var useFPS = (useRAF = false) => {
@@ -35444,34 +35586,23 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   // web/src/app.tsx
   var App = () => {
     const { api, changeAPIType } = useAPI();
-    const [devices, setDevices] = (0, import_react42.useState)([]);
     const [logs, addLogMessage] = useLogs(100);
     const { setFPSRef } = useFPS(true);
     const [activePane, setActivePane] = (0, import_react42.useState)("configure");
     const [plotNames, setPlotNames] = (0, import_react42.useState)(["sensor 123"]);
     const oneMorePlot = () => setPlotNames((x2) => [...x2, "sensor " + ("" + Math.random()).slice(3, 6)]);
-    const { connect, disconnect, connectedDevice, dataBuffer } = useConnectedDevice(api, addLogMessage);
+    const {
+      connect,
+      connectedDevice,
+      dataBuffer,
+      devices,
+      disconnect,
+      updateDevices
+    } = useDevices(api, addLogMessage);
     const connectAndViewPlot = async (id) => {
       await connect(id);
       setActivePane("plot");
     };
-    const updateDevices = async () => {
-      await disconnect();
-      setDevices([]);
-      const deviceIds = await api.enumerateDevices();
-      const devicesAndInfo = [];
-      for (const deviceId of deviceIds) {
-        const deviceInfo = await api.connectDevice(deviceId);
-        devicesAndInfo.push([deviceId, deviceInfo]);
-        await api.disconnect();
-      }
-      setDevices(devicesAndInfo);
-    };
-    const updateDevicesRef = (0, import_react42.useRef)(updateDevices);
-    updateDevicesRef.current = updateDevices;
-    (0, import_react42.useEffect)(() => {
-      updateDevicesRef.current();
-    }, [api]);
     return /* @__PURE__ */ import_react42.default.createElement(import_react42.default.Fragment, null, /* @__PURE__ */ import_react42.default.createElement(TopBar, {
       activePane,
       setActivePane,
@@ -35506,10 +35637,11 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     oneMorePlot,
     updateDevices
   }) => {
-    const connectedDeviceInfo = connectedDevice && devices.find(([id, info]) => id === connectedDevice);
+    const connectedDeviceInfo = connectedDevice === void 0 ? void 0 : devices[connectedDevice];
+    const connectedName = connectedDeviceInfo?.name || connectedDevice;
     return /* @__PURE__ */ import_react42.default.createElement(import_react42.default.Fragment, null, /* @__PURE__ */ import_react42.default.createElement(Header_default, {
       as: "h1"
-    }, connectedDeviceInfo ? "Connected to " + connectedDeviceInfo[1].name : "Connect to a device"), /* @__PURE__ */ import_react42.default.createElement(Devices, {
+    }, connectedDevice ? "Connected to " + connectedName : "Not connected to a device"), /* @__PURE__ */ import_react42.default.createElement(Devices, {
       changeAPIType,
       connect,
       connectedDevice,
@@ -35519,7 +35651,9 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       updateDevices
     }), /* @__PURE__ */ import_react42.default.createElement("div", {
       style: { height: 300, overflowY: "auto" }
-    }, /* @__PURE__ */ import_react42.default.createElement("code", null, /* @__PURE__ */ import_react42.default.createElement("pre", null, logs.map((x2) => `${x2.log_type}: ${x2.log_message}`).join("\n")))));
+    }, /* @__PURE__ */ import_react42.default.createElement("code", null, /* @__PURE__ */ import_react42.default.createElement("pre", null, logs.map((x2) => `${x2.log_type}: ${x2.log_message}`).join("\n")))), /* @__PURE__ */ import_react42.default.createElement("button", {
+      onClick: oneMorePlot
+    }, "Debug: add plot"));
   };
   var Devices = (props) => {
     const {
@@ -35531,20 +35665,21 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       updateDevices,
       apiType
     } = props;
-    const connectedDeviceInfo = connectedDevice && devices.find(([id, _4]) => id === connectedDevice);
+    const connectedDeviceInfo = connectedDevice === void 0 ? void 0 : devices[connectedDevice];
+    const connectedName = connectedDeviceInfo?.name || connectedDevice;
     return /* @__PURE__ */ import_react42.default.createElement(Table_default, {
       celled: true
     }, /* @__PURE__ */ import_react42.default.createElement(Table_default.Header, null, /* @__PURE__ */ import_react42.default.createElement(Table_default.Row, null, /* @__PURE__ */ import_react42.default.createElement(Table_default.HeaderCell, {
       width: 6
     }, "Device"), /* @__PURE__ */ import_react42.default.createElement(Table_default.HeaderCell, {
       width: 4
-    }, "Channels"), /* @__PURE__ */ import_react42.default.createElement(Table_default.HeaderCell, {
+    }, "Device Info"), /* @__PURE__ */ import_react42.default.createElement(Table_default.HeaderCell, {
       width: 6
-    }))), /* @__PURE__ */ import_react42.default.createElement(Table_default.Body, null, devices.map(([id, info]) => /* @__PURE__ */ import_react42.default.createElement(Table_default.Row, {
+    }))), /* @__PURE__ */ import_react42.default.createElement(Table_default.Body, null, Object.keys(devices).map((id) => /* @__PURE__ */ import_react42.default.createElement(Table_default.Row, {
       key: id
-    }, /* @__PURE__ */ import_react42.default.createElement(Table_default.Cell, null, connectedDevice === id ? /* @__PURE__ */ import_react42.default.createElement(import_react42.default.Fragment, null, /* @__PURE__ */ import_react42.default.createElement(Label, {
+    }, /* @__PURE__ */ import_react42.default.createElement(Table_default.Cell, null, connectedDevice === id && /* @__PURE__ */ import_react42.default.createElement(Label, {
       ribbon: true
-    }, "Connected"), info.name) : info.name), /* @__PURE__ */ import_react42.default.createElement(Table_default.Cell, null, info.channels), /* @__PURE__ */ import_react42.default.createElement(Table_default.Cell, null, connectedDevice === id ? /* @__PURE__ */ import_react42.default.createElement(import_react42.default.Fragment, null, /* @__PURE__ */ import_react42.default.createElement(Button_default, {
+    }, "Connected"), id), /* @__PURE__ */ import_react42.default.createElement(Table_default.Cell, null, /* @__PURE__ */ import_react42.default.createElement("code", null, /* @__PURE__ */ import_react42.default.createElement("pre", null, devices[id] ? JSON.stringify(devices[id], null, 2) : ""))), /* @__PURE__ */ import_react42.default.createElement(Table_default.Cell, null, connectedDevice === id ? /* @__PURE__ */ import_react42.default.createElement(import_react42.default.Fragment, null, /* @__PURE__ */ import_react42.default.createElement(Button_default, {
       onClick: disconnect
     }, "Disconnect")) : /* @__PURE__ */ import_react42.default.createElement(Button_default, {
       onClick: () => connect(id)
@@ -35583,9 +35718,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       style: { height: 120 }
     }, "Discover Twinleaf devices over TIO via WebSerial"), apiType === "WebSerial" ? /* @__PURE__ */ import_react42.default.createElement(Button_default, {
       disabled: true
-    }, "in use") : /* @__PURE__ */ import_react42.default.createElement(Button_default, {
-      disabled: true
-    }, "not yet")), /* @__PURE__ */ import_react42.default.createElement(Grid_default.Column, {
+    }, "in use") : /* @__PURE__ */ import_react42.default.createElement(Button_default, null, "switch (experimental)")), /* @__PURE__ */ import_react42.default.createElement(Grid_default.Column, {
       textAlign: "center",
       verticalAlign: "top"
     }, /* @__PURE__ */ import_react42.default.createElement(Header_default, {
@@ -35621,7 +35754,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       inverted: true,
       style: { backgroundColor: "#1b1c1d" }
     }, /* @__PURE__ */ import_react42.default.createElement(Image_default, {
-      src: "/img/Twinleaf-Logo-White.png",
+      src: "./img/Twinleaf-Logo-White.png",
       size: "small",
       style: { margin: "10px" }
     }), /* @__PURE__ */ import_react42.default.createElement(Menu_default.Item, {
