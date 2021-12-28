@@ -7,6 +7,7 @@ import {
   Header,
   Icon,
   Image,
+  Input,
   Label,
   Menu,
   MenuItemProps,
@@ -20,6 +21,7 @@ import {
   useDevices,
   useFPS,
   useLogs,
+  useUplot,
   useWhatChanged,
 } from "./hooks";
 import { APIType, DeviceId, DeviceInfo } from "./api";
@@ -57,7 +59,7 @@ export const App = () => {
         setActivePane={setActivePane}
         setFPSRef={setFPSRef}
       />
-      <Container>
+      <Container fluid>
         {plotNames.map(
           (name) =>
             dataBuffer && (
@@ -337,132 +339,50 @@ type MultiChannelGraphProps = {
   dataBuffer: DataBuffer;
   hidden: boolean;
 };
-const MultiChannelGraph = (props: MultiChannelGraphProps) => {
-  const { dataBuffer, hidden } = props;
-  const [plotting, setPlotting] = useState(false);
-  const [el, setEl] = useState<HTMLDivElement | null>(null);
-
+const MultiChannelGraph = ({ dataBuffer, hidden }: MultiChannelGraphProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-
-  const plot = useRef<ReturnType<typeof makePlot>>();
-
-  const startPlotting = () => {
-    if (!plot.current?.start) return;
-    plot.current.start();
-    setPlotting(true);
-  };
-  const stopPlotting = () => {
-    setPlotting(false);
-    plot.current?.stop && plot.current.stop();
-  };
-
-  useWhatChanged({ dataBuffer, el }, "running create plot useEffect");
-  useEffect(() => {
-    if (el) {
-      el.innerHTML = "";
-      plot.current = makePlot(el, dataBuffer);
-      startPlotting();
-      return function cleanup() {
-        stopPlotting();
-      };
-    }
-    return;
-  }, [dataBuffer, el]);
+  const { setPlotEl, start, stop, plotting } = useUplot(dataBuffer);
 
   return (
     <div hidden={hidden}>
-      <Button onClick={startPlotting} disabled={plotting}>
+      <Button onClick={start} disabled={plotting}>
         Start plotting
       </Button>
-      <Button onClick={stopPlotting} disabled={!plotting}>
+      <Button onClick={stop} disabled={!plotting}>
         Pause plottling
       </Button>
-      <div ref={setEl} />
+      {dataBuffer && (
+        <Slider
+          min={100}
+          max={10000}
+          onChange={(n: number) => dataBuffer.setWindowSize(n)}
+          initial={dataBuffer.size}
+        />
+      )}
+      <div ref={setPlotEl} />
     </div>
   );
 };
 
-function makePlot(
-  el: HTMLElement,
-  dataBuffer: DataBuffer
-): { plot: uPlot; start: () => void; stop: () => void } {
-  const { deviceName, data, channelNames, size, sampleNums, observedHz } =
-    dataBuffer;
-
-  function getSize() {
-    // TODO use el.clientWidth in the future + a resizeObserver
-    return {
-      width: window.innerWidth - 100,
-      height: Math.floor((window.innerWidth - 100) / 3),
-    };
-  }
-
-  const scales = {
-    x: {},
-    y: {
-      auto: false,
-      range: [-1, 1] as [number, number],
-    },
+type SliderProps = {
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+  initial: number;
+};
+const Slider = ({ min, max, onChange, initial }: SliderProps) => {
+  const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("running onChange");
+    onChange(e.target.valueAsNumber);
   };
-
-  const colors = ["red", "green", "blue", "yellow", "orange", "purple"];
-
-  const opts = {
-    title: dataBuffer.deviceName,
-    ...getSize(),
-    pxAlign: 0,
-    ms: 1 as const,
-    scales,
-    pxSnap: false,
-    series: dataBuffer.channelNames.map((name, i) => ({
-      stroke: colors[i % colors.length],
-      paths: uPlot.paths.linear!(),
-      spanGaps: true,
-      pxAlign: 0,
-      points: { show: true },
-    })),
-  };
-
-  let u = new uPlot(opts, [sampleNums, ...data], el);
-
-  function fpsFormat(num: number) {
-    return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
-  }
-
-  // TODO move this into a hook or stateful object
-  // TODO debounce this, window resize behavior feels bad
-  let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
-  function stopRescheduling() {
-    cancelAnimationFrame(scheduledPlotUpdate);
-  }
-  function update() {
-    const scale = {
-      min: sampleNums[0],
-      max: sampleNums[sampleNums.length - 1],
-    };
-
-    u.setData([sampleNums, ...data], false);
-    u.setScale("x", scale);
-    (el.querySelector(".u-title")! as HTMLDivElement).innerText =
-      dataBuffer.deviceName +
-      " - receiving at " +
-      fpsFormat(observedHz()) +
-      " Hz";
-
-    scheduledPlotUpdate = requestAnimationFrame(update);
-  }
-
-  // TODO move this into a hook
-  let lastResize = 0;
-  window.addEventListener("resize", () => {
-    // debounce to prevent Tauri crash
-    // a real debounce would set a timer too
-    if (Date.now() < lastResize + 1000) {
-      return;
-    }
-    u.setSize(getSize());
-    lastResize = Date.now();
-  });
-
-  return { plot: u, start: update, stop: stopRescheduling };
-}
+  return (
+    <Input
+      value={initial}
+      onChange={_onChange}
+      type="range"
+      name="window"
+      min={min}
+      max={max}
+    />
+  );
+};
