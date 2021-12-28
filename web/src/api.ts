@@ -147,8 +147,8 @@ export const DemoAPI: API = {
       throw new Error("Demo API can only connect to dummy data source");
     }
     if (uri.includes("10Hz")) {
-      demoInterval = 100;
-      demoPacketsPerInterval = 1;
+      demoInterval = 500;
+      demoPacketsPerInterval = 5;
     } else if (uri.includes("100Hz")) {
       demoInterval = 100;
       demoPacketsPerInterval = 10;
