@@ -301,7 +301,7 @@ const TopBar = ({
   return (
     <Menu inverted style={{ backgroundColor: "#1b1c1d" }}>
       <Image
-        src="/img/Twinleaf-Logo-White.png"
+        src="./img/Twinleaf-Logo-White.png"
         size="small"
         style={{ margin: "10px" }}
       />
