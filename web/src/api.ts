@@ -187,6 +187,11 @@ export const DemoAPI: API = {
       demoInterval = 20;
       demoPacketsPerInterval = 20;
     } else if (uri.includes("orientation")) {
+      if (
+        typeof (DeviceOrientationEvent as any).requestPermission === "function"
+      ) {
+        await (DeviceOrientationEvent as any).requestPermission();
+      }
       window.addEventListener("deviceorientation", handleOrientation, true);
       demoOrientationConnected = true;
       channels = ["alpha", "beta", "gamma"];
