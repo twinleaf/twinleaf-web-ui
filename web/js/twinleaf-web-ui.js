@@ -32063,14 +32063,13 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   var import_react41 = __toESM(require_react());
 
   // web/src/api.ts
-  var encoder = new TextEncoder();
-  var decoder = new TextDecoder();
   var TauriAPI = {
     type: "Tauri",
     listenToPackets: (cb) => {
       return o6("device-packet", (event) => {
         if (event.payload.packet_type == "log") {
-          console.log("DEVICE (" + event.payload.log_type + "): " + event.payload.log_message);
+          const { log_type, log_message } = event.payload;
+          console.log("DEVICE (" + log_type + "): " + log_message);
         }
         return cb(event.payload);
       });
@@ -32081,15 +32080,12 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       return resp;
     }),
     connectDevice: (uri) => __async(void 0, null, function* () {
-      const resp = yield i9("connect_device", {
-        uri
-      });
-      console.log(resp);
+      const loc = { uri };
+      const resp = yield i9("connect_device", loc);
       return resp;
     }),
     disconnect: () => __async(void 0, null, function* () {
-      const resp = yield i9("disconnect");
-      console.log(resp);
+      yield i9("disconnect");
     })
   };
   function randn_bm() {
@@ -32213,6 +32209,8 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       return Promise.resolve();
     }
   };
+  var encoder = new TextEncoder();
+  var decoder = new TextDecoder();
   function sendHeartbeat(writer) {
     return __async(this, null, function* () {
       const data = Uint8Array.from([
@@ -36059,19 +36057,14 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     }
     return { plot: u11, start: update, stop: stopUpdating, destroy };
   };
-  var makeFFTPlot = (channelIndex, showAxis) => (el, dataBuffer) => {
+  var makeFFTPlot = (channelIndex) => (el, dataBuffer) => {
     const u11 = new uPlot({
       width: window.innerWidth - 40,
       height: 160,
       pxAlign: 0,
-      axes: showAxis ? [{ show: true }] : [{ show: true }],
+      axes: [{ show: true }],
       ms: 1,
-      scales: {
-        x: {
-          time: false
-        },
-        y: {}
-      },
+      scales: { x: { time: false } },
       legend: { show: false },
       series: [
         {},
@@ -36135,7 +36128,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       return WebSocketAPI.getInstance();
     throw new Error("Unknown API Type " + apiType);
   };
-  var useAPI = (initial) => {
+  var useDeviceAPI = (initial) => {
     const [apiType, setApiType] = (0, import_react41.useState)(() => {
       if (initial)
         return initial;
@@ -36190,7 +36183,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
             log_message: packet.log_message
           });
         } else {
-          throw new Error("received unknown packet type");
+          throw new Error("received unknown packet type:" + packet.packet_type);
         }
       };
       stopListening.current = yield api.listenToPackets(onPacket);
@@ -36286,7 +36279,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
 
   // web/src/app.tsx
   var App = () => {
-    const { api, changeAPIType } = useAPI();
+    const { api, changeAPIType } = useDeviceAPI();
     const [logs, addLogMessage] = useLogs(100);
     const { setFPSRef } = useFPS(true);
     const [activePane, setActivePane] = (0, import_react42.useState)("configure");
@@ -36358,7 +36351,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       style: { height: 300, overflowY: "auto" }
     }, /* @__PURE__ */ import_react42.default.createElement("code", null, /* @__PURE__ */ import_react42.default.createElement("pre", null, logs.map((x2) => `${x2.log_type}: ${x2.log_message}`).join("\n")))), /* @__PURE__ */ import_react42.default.createElement("button", {
       onClick: oneMorePlot
-    }, "Debug: add plot"));
+    }, "add plot (for performance testing)"));
   };
   var Devices = (props) => {
     const {
@@ -36504,12 +36497,11 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       key: i10,
       dataBuffer,
       i: i10,
-      started: plotting,
-      showAxis: i10 == dataBuffer.channelNames.length - 1
+      started: plotting
     })));
   };
-  var FFTPlot = ({ dataBuffer, i: i10, started, showAxis }) => {
-    const { setPlotEl, start: start2, stop } = useUplot(dataBuffer, makeFFTPlot(i10, !!showAxis));
+  var FFTPlot = ({ dataBuffer, i: i10, started }) => {
+    const { setPlotEl, start: start2, stop } = useUplot(dataBuffer, makeFFTPlot(i10));
     (0, import_react42.useEffect)(() => {
       if (started)
         start2();
@@ -36521,7 +36513,6 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   };
   var Slider = ({ min: min4, max: max3, onChange, initial }) => {
     const _onChange = (e4) => {
-      console.log("running onChange");
       onChange(e4.target.valueAsNumber);
     };
     return /* @__PURE__ */ import_react42.default.createElement("input", {
@@ -36535,12 +36526,6 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   };
 
   // web/main.js
-  var Hello = class extends import_react43.default.Component {
-    render() {
-      return import_react43.default.createElement("div", null, `Hello ${this.props.toWhat}`);
-    }
-  };
-  globalThis.Hello = Hello;
   globalThis.App = App;
   globalThis.React = import_react43.default;
   globalThis.ReactDOM = import_react_dom2.default;

@@ -2,8 +2,18 @@ import FFT from "fft.js";
 import uPlot from "uplot";
 import { DataDevicePacket, DeviceInfo } from "./api";
 
-// always make a new buffer when switching devices
-
+/*
+ * DataBuffer maintains a "circular buffer" (maybe, naively it's O(n) to add elements
+ * but JavaScript runtimes optimize this) of each channel of input.
+ * It also
+ * - keeps track of whether it is dirty wrt a given reader
+ * - records when frames of data were received to estimate data rate in Hz
+ * - calculates power spectra for individual channels
+ *
+ * The mostly change required here: if data packets include timestamps,
+ * those should be recorded here, replacing the .positions array and
+ * making the observedHz calculation obsolete.
+ */
 export class DataBuffer {
   size: number;
   data: number[][];
@@ -56,10 +66,13 @@ export class DataBuffer {
       this.positions.unshift((this.positions[0] || 0) - 1);
     }
   };
-  // This is a hack for data souces which don't send timestamps
-  // and send data more frequently that the refresh rate.
-  // If all data source send timestamps we can plot more honestly
-  // and stil not drop frames;
+
+  /*
+   * This is a hack for data souces which don't send timestamps
+   * and send data more frequently that the refresh rate.
+   * If all data source send timestamps we can plot more honestly
+   * and stil not drop frames;
+   */
   observedHz = (n = 1000) => {
     if (!this.sampleReceivedTimes.length) return 0;
     const lastN = this.sampleReceivedTimes.slice(-(n + 1));
@@ -69,6 +82,7 @@ export class DataBuffer {
     if (isFinite(fps)) return fps;
     return 0;
   };
+
   /*
    * Real signal processing will probably happen on the device,
    * but to get us started here's a power spectrum.
@@ -105,7 +119,11 @@ export class DataBuffer {
 }
 
 function getSize() {
-  // TODO use el.clientWidth in the future + a resizeObserver
+  // TODO - use size of the container instead of window
+  // Currently size is hardcoded to match the window, which won't
+  // work for layouts that don't display plots at full width.
+  // Instead, this should grow to fill the space of its container
+  // using el.clientWidth + a ResizeObserver.
   return {
     width: window.innerWidth - 40,
     height: Math.floor((window.innerWidth - 40) / 3),
@@ -116,6 +134,7 @@ function fpsFormat(num: number) {
   return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
 }
 
+// Given a DOM element, stick a stateful uPlot in it and return controls for it
 export type MakePlot = (
   el: HTMLElement,
   db: DataBuffer
@@ -170,7 +189,8 @@ export const makePlot: MakePlot = (el: HTMLElement, dataBuffer: DataBuffer) => {
       dataBuffer.sampleReceivedTimes.length > 30 &&
       dataBuffer.alreadySeenBy(u)
     ) {
-      // do an interpolated update!
+      // if the plot has seen this data already and we can,
+      // do an interpolated update (aka animation)
       const delta = (t - lastDataUpdate) / 1000;
       const expectedDataPoints = observedHz * delta;
       xs = dataBuffer.positions.map((x) => x - expectedDataPoints);
@@ -221,32 +241,23 @@ export const makePlot: MakePlot = (el: HTMLElement, dataBuffer: DataBuffer) => {
   return { plot: u, start: update, stop: stopUpdating, destroy };
 };
 
+// This is a function that returns a function
 export const makeFFTPlot =
-  (channelIndex: number, showAxis: boolean): MakePlot =>
+  (channelIndex: number): MakePlot =>
   (el: HTMLElement, dataBuffer: DataBuffer) => {
     const u = new uPlot(
       {
         width: window.innerWidth - 40,
         height: 160,
         pxAlign: 0,
-        axes: showAxis ? [{ show: true }] : [{ show: true }],
+        axes: [{ show: true }],
         ms: 1 as const,
-        scales: {
-          x: {
-            //range: [0, dataBuffer.size] as [number, number],
-            time: false,
-          },
-          y: {
-            //auto: false,
-            //range: [0, 10],
-          },
-        },
+        scales: { x: { time: false } },
         legend: { show: false },
         series: [
           {},
           {
             stroke: "black",
-            //        paths: uPlot.paths.points!(),
             spanGaps: true,
             pxAlign: 0,
             points: { show: false },

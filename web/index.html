@@ -20,17 +20,12 @@
     href="https://cdn.jsdelivr.net/npm/semantic-ui@2/dist/semantic.css"
   />
 
-
-
 <div id="root">
 <!-- The dynamically generated Twinleaf sensor monitor app gets inserted here -->
 </div>
 
 <script>
-const e = React.createElement;
-// Read ./main.js to see what components are available
-const TwinleafApp = e(App, {toWhat: 'World'}, null);
-
+const TwinleafApp = React.createElement(App, {}, null);
 ReactDOM.render(TwinleafApp, document.querySelector('#root'));
 </script>
 </body>

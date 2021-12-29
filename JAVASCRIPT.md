@@ -42,15 +42,64 @@ When describing heirarchies of DOM elements it's convenient to use a syntax
 that looks more like HTML. Since most JavaScript is compiled anyway, using a
 new language isn't such a reach.
 
-## Avoiding writing TypeScript or JSX
-
-You can intermix .js and .ts and jsx and tsx files. The ts means TypeScript,
-the x means jsx. To customize the app without touching JSX or TypeScript, you
-can modify the JavaScript. You may be able to compose an app without modifying
-the components themselves.
 
 ## JavaScript Performance notes
 
+Browsers are reactors, there aren't really mainloops in JavaScript code.
+There are two mainloop-ish things going on though, two ways that things update.
+
+1. React - when users click or other events that let React know something may have changd, React "renders" (runs the code in the React component tree) to find out what the next UI state should look like and then "commits" it (does a transactional render) to make the screen look that way. The entire page EXCEPT for the plots and the FPS counter is run by React.
+2. Immediate mode code: some code runs every animation frame, usually 30-120 times per second. The plots are rendered this way.
+
+React doesn't notice DOM changes that it didn't cause, so care has to be taken to prevent React from stomping over our plots.
+
+There's just one thread, so these don't interrupt each other. If a React render + commit (
+There are two "mainloops" running simultaneously in this app 
+
 By doing all graphing in a separate requestAnimationFrame loop, the React
 code shouldn't need to be optimized. Avoiding useMemo, useCallback etc. hooks
-hopefully makes the code more accessible.
+(tricks to make React renders more efficient) hopefully makes the code more accessible.
+
+## Tauri API
+
+```
+import { invoke } from "@tauri-apps/api";
+// or: const invoke = window.__TAURI__.invoke
+import { listen } from '@tauri-apps/api/event'
+// or: const listen = window.__TAURI__.event.listen
+
+
+// register a listener for data packets. current message types like:
+//
+// packet_type: "log"
+// log_type: str (aka, log-level)
+// log_message: str
+//
+// packet_type: "data"
+// sample_number: number (uint32)
+// data_floats: [number] (float64)
+//
+// The "data" type will presumably change to be a "frame" with named channels
+listen('device-packet', event => {
+  if (event.payload.packet_type == 'log') {
+    console.log("DEVICE (" + event.payload.log_type + "): " + event.payload.log_message);
+  } else if (event.payload.packet_type == 'data') {
+    console.log("DATA RECEIVED: " + event.payload.data_floats);
+  }
+})
+
+globalThis.demo_enumerate = demo_enumerate = function() {
+    invoke('enumerate_devices').then((devices) => console.log(devices));
+}
+
+// "dummy" is a special device that will send bogus data
+// Currently this doesn't really return anything, but the intention is to have
+// it return an object which has metadata about the device
+//invoke('connect_device', { uri: "dummy://" }).then((resp) => console.log(resp))
+//invoke('connect_device', { uri: "" }).then((resp) => console.log(resp))
+
+globalThis.demo_connect = function(uri) {
+    invoke('connect_device', { uri: uri }).then((resp) => console.log(resp))
+}
+```
+

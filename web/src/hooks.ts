@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import uPlot from "uplot";
 import {
   API,
   APIType,
@@ -21,7 +20,7 @@ const buildApi = (apiType: APIType): API => {
   throw new Error("Unknown API Type " + apiType);
 };
 
-export const useAPI = (
+export const useDeviceAPI = (
   initial?: APIType
 ): { api: API; changeAPIType: (apiType: APIType) => void } => {
   const [apiType, setApiType] = useState<APIType>(() => {
@@ -35,7 +34,7 @@ export const useAPI = (
 };
 
 export type LogEntry = {
-  log_type: string; // TODO
+  log_type: string; // TODO - at least "warn" is allowed
   log_message: string;
 };
 
@@ -44,7 +43,6 @@ export const useLogs = (
 ): [LogEntry[], (msg: LogEntry) => void, () => void] => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const addLogMessage = useCallback((msg: LogEntry) => {
-    // TODO
     setLogs((logs) => {
       if (logs.length >= capacity) {
         return [...logs.slice(1), msg];
@@ -83,8 +81,8 @@ export const useDevices = (
     await api.disconnect();
     setConnectedDevice(undefined);
   };
+  // not reentrant
   const connect = async (deviceId: DeviceId) => {
-    // TODO this isn't reentrant, we need another state bit for "busy" to hide the buttons and/or return early
     if (connectedDevice) {
       stopListening.current && stopListening.current();
       await api.disconnect();
@@ -105,7 +103,13 @@ export const useDevices = (
           log_message: packet.log_message,
         });
       } else {
-        throw new Error("received unknown packet type");
+        // the 'as any' cast below is required because TypeScript notices that the
+        // if/else if clauses above already exhaustively match the subtypes of DevicePacket
+        // (which is good!) so this runtime error should only occur if this function
+        // is passed something that isn't a DevicePacket somehow.
+        throw new Error(
+          "received unknown packet type:" + (packet as any).packet_type
+        );
       }
     };
 
@@ -113,18 +117,20 @@ export const useDevices = (
     return;
   };
 
-  // warning: not reentrant!
+  // not reentrant
   const updateDevices = async () => {
     await disconnect();
     setDevices({});
     const deviceIds = await api.enumerateDevices();
     const devices = Object.fromEntries(deviceIds.map((id) => [id, undefined]));
     setDevices(devices);
-    // we could connect+disconnect each devices here to update deviceInfo, but only if
-    // it's safe to connect to arbitrary devices, which may not be Twinleaf devices.
+    // we could connect+disconnect each device here to update deviceInfo, but only if
+    // it is safe to connect to arbitrary devices, which may not be Twinleaf devices.
   };
 
-  // Update the reference in the useEffect closure;
+  // Update the reference in the useEffect closure instead of adding it to the
+  // dependencies array so that it runs only when api changes, and not when the
+  // updateDevices function changes.
   const updateDevicesRef = useRef(updateDevices);
   updateDevicesRef.current = updateDevices;
   useEffect(() => {
@@ -142,7 +148,9 @@ export const useDevices = (
   };
 };
 
-// useRAF means use requestAnimationFrame to guess FPS
+// useRAF means use requestAnimationFrame to guess FPS.
+// This is a useful measure of frames per second if only
+// if real work is being done on every frame.
 export const useFPS = (
   useRAF = false
 ): {
@@ -189,7 +197,10 @@ export const useFPS = (
   return { reportFrame, setFPSRef };
 };
 
-// For debugging, prints which prop changes caused a rerender
+// A debugging utility that prints which objects changed their identity
+// to see e.g. which prop caused a rerender by changing.
+// Function objects (aka closures) changing identity are the most
+// common surprise.
 export const useWhatChanged = (
   props: Record<string, any>,
   label: string = ""
@@ -229,8 +240,6 @@ export const useUplot = (dataBuffer: DataBuffer, makePlot: MakePlot) => {
     setPlotting(false);
     plot.current?.stop && plot.current.stop();
   };
-
-  //useWhatChanged({ dataBuffer, el }, "running create plot useEffect");
   useEffect(() => {
     if (el) {
       plot.current = makePlot(el, dataBuffer);

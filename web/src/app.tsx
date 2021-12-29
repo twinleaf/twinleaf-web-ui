@@ -14,7 +14,7 @@ import {
 } from "semantic-ui-react";
 import {
   LogEntry,
-  useAPI,
+  useDeviceAPI,
   useDevices,
   useFPS,
   useLogs,
@@ -26,7 +26,7 @@ import { APIType, DeviceId, DeviceInfo } from "./api";
 type ContentPane = "configure" | "plot" | "about";
 
 export const App = () => {
-  const { api, changeAPIType } = useAPI();
+  const { api, changeAPIType } = useDeviceAPI();
   const [logs, addLogMessage] = useLogs(100);
   const { setFPSRef } = useFPS(true);
 
@@ -147,7 +147,7 @@ const ConfigurePane = ({
           </pre>
         </code>
       </div>
-      <button onClick={oneMorePlot}>Debug: add plot</button>
+      <button onClick={oneMorePlot}>add plot (for performance testing)</button>
     </>
   );
 };
@@ -369,7 +369,6 @@ const MultiChannelGraph = ({ dataBuffer, hidden }: MultiChannelGraphProps) => {
           dataBuffer={dataBuffer}
           i={i}
           started={plotting}
-          showAxis={i == dataBuffer.channelNames.length - 1}
         ></FFTPlot>
       ))}
     </div>
@@ -380,13 +379,9 @@ type FFTPlotProps = {
   dataBuffer: DataBuffer;
   i: number;
   started: boolean;
-  showAxis?: boolean;
 };
-const FFTPlot = ({ dataBuffer, i, started, showAxis }: FFTPlotProps) => {
-  const { setPlotEl, start, stop } = useUplot(
-    dataBuffer,
-    makeFFTPlot(i, !!showAxis)
-  );
+const FFTPlot = ({ dataBuffer, i, started }: FFTPlotProps) => {
+  const { setPlotEl, start, stop } = useUplot(dataBuffer, makeFFTPlot(i));
 
   useEffect(() => {
     if (started) start();
@@ -404,7 +399,6 @@ type SliderProps = {
 };
 const Slider = ({ min, max, onChange, initial }: SliderProps) => {
   const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log("running onChange");
     onChange(e.target.valueAsNumber);
   };
   return (

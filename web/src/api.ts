@@ -1,6 +1,8 @@
 // The Twinleaf API for talking to devices via
-// - the WebSerial API
 // - the rust proxy in the Tauri app
+// - demo devices in-browser, no external communication
+// - the WebSerial API
+// - a WebSocket
 
 import { invoke } from "@tauri-apps/api";
 import {
@@ -10,14 +12,14 @@ import {
 
 export type LogDevicePacket = {
   packet_type: "log";
-  log_type: string; // TODO
+  log_type: string; // TODO at least "warn" is allowed
   log_message: string;
 };
 
 export type DataDevicePacket = {
   packet_type: "data";
-  sample_number: number; // uint32
-  data_floats: number[]; // TODO what is this?
+  sample_number: number;
+  data_floats: number[];
 };
 
 export type DevicePacket = LogDevicePacket | DataDevicePacket;
@@ -38,50 +40,41 @@ export interface API {
   disconnect: () => Promise<void>;
 }
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
 export const TauriAPI: API = {
   type: "Tauri",
   listenToPackets: (cb: (packet: DevicePacket) => void) => {
     return TauriListen("device-packet", (event: TauriEvent<DevicePacket>) => {
       if (event.payload.packet_type == "log") {
-        console.log(
-          "DEVICE (" +
-            event.payload.log_type +
-            "): " +
-            event.payload.log_message
-        );
+        const { log_type, log_message } = event.payload;
+        console.log("DEVICE (" + log_type + "): " + log_message);
       }
       return cb(event.payload);
     });
   },
   enumerateDevices: async () => {
-    const resp = await invoke("enumerate_devices");
-    console.log(resp);
-    return resp as any[]; // just hoping
-  },
-  connectDevice: async (uri: string) => {
-    const resp: DeviceInfo = await invoke("connect_device", {
-      uri,
-    });
+    const resp: string[] = await invoke("enumerate_devices");
     console.log(resp);
     return resp;
   },
+  connectDevice: async (uri: string) => {
+    const loc = { uri };
+    const resp: DeviceInfo = await invoke("connect_device", loc);
+    return resp;
+  },
   disconnect: async () => {
-    const resp = await invoke("disconnect");
-    console.log(resp);
+    await invoke("disconnect");
   },
 };
 
+// Demo API - just for testing and demonstration
 function randn_bm(): number {
   let u = 0,
     v = 0;
-  while (u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+  while (u === 0) u = Math.random();
   while (v === 0) v = Math.random();
   let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-  num = num / 10.0 + 0.5; // Translate to 0 -> 1
-  if (num > 1 || num < 0) return randn_bm(); // resample between 0 and 1
+  num = num / 10.0 + 0.5;
+  if (num > 1 || num < 0) return randn_bm();
   return num;
 }
 
@@ -214,6 +207,11 @@ export const DemoAPI: API = {
   },
 };
 
+/////////////////////////////////////////////////////////////////
+// WebSerialAPI - doesn't work yet, this is just a place to start
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 // TODO UNTESTED CODE
 async function sendHeartbeat(writer: WritableStreamDefaultWriter) {
   // Hack: hardcoded heartbeat to switch to binary mode.
@@ -224,7 +222,7 @@ async function sendHeartbeat(writer: WritableStreamDefaultWriter) {
   await writer.write(data);
 }
 
-// TODO UNTESTED CODE
+// UNTESTED CODE
 function processPacket(pkt: Uint8Array): DevicePacket | undefined {
   // filter out short messages
   if (pkt.byteLength < 8) return;
@@ -238,7 +236,7 @@ function processPacket(pkt: Uint8Array): DevicePacket | undefined {
 
   return {
     packet_type: "log",
-    log_type: "warn", // TODO this data is probably in there somewhere
+    log_type: "warn", // TODO extract this data
     log_message,
   };
 }
@@ -353,6 +351,7 @@ export class WebSerialAPI implements API {
   }
 }
 
+/////////////////////////////////////////////////////////////////
 // There was discussion of a ws API, websockets were implemented
 // on some hardware.
 export class WebSocketAPI implements API {
