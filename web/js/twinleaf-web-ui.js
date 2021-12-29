@@ -9,6 +9,7 @@
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __pow = Math.pow;
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __spreadValues = (a11, b3) => {
     for (var prop in b3 || (b3 = {}))
@@ -1093,7 +1094,7 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useReducer(reducer, initialArg, init);
           }
-          function useRef5(initialValue) {
+          function useRef4(initialValue) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useRef(initialValue);
           }
@@ -1672,7 +1673,7 @@
           exports2.useLayoutEffect = useLayoutEffect2;
           exports2.useMemo = useMemo4;
           exports2.useReducer = useReducer;
-          exports2.useRef = useRef5;
+          exports2.useRef = useRef4;
           exports2.useState = useState6;
           exports2.version = ReactVersion;
         })();
@@ -22412,6 +22413,382 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     }
   });
 
+  // node_modules/fft.js/lib/fft.js
+  var require_fft = __commonJS({
+    "node_modules/fft.js/lib/fft.js"(exports2, module2) {
+      "use strict";
+      function FFT2(size) {
+        this.size = size | 0;
+        if (this.size <= 1 || (this.size & this.size - 1) !== 0)
+          throw new Error("FFT size must be a power of two and bigger than 1");
+        this._csize = size << 1;
+        var table = new Array(this.size * 2);
+        for (var i10 = 0; i10 < table.length; i10 += 2) {
+          const angle = Math.PI * i10 / this.size;
+          table[i10] = Math.cos(angle);
+          table[i10 + 1] = -Math.sin(angle);
+        }
+        this.table = table;
+        var power = 0;
+        for (var t2 = 1; this.size > t2; t2 <<= 1)
+          power++;
+        this._width = power % 2 === 0 ? power - 1 : power;
+        this._bitrev = new Array(1 << this._width);
+        for (var j2 = 0; j2 < this._bitrev.length; j2++) {
+          this._bitrev[j2] = 0;
+          for (var shift = 0; shift < this._width; shift += 2) {
+            var revShift = this._width - shift - 2;
+            this._bitrev[j2] |= (j2 >>> shift & 3) << revShift;
+          }
+        }
+        this._out = null;
+        this._data = null;
+        this._inv = 0;
+      }
+      module2.exports = FFT2;
+      FFT2.prototype.fromComplexArray = function fromComplexArray(complex, storage) {
+        var res = storage || new Array(complex.length >>> 1);
+        for (var i10 = 0; i10 < complex.length; i10 += 2)
+          res[i10 >>> 1] = complex[i10];
+        return res;
+      };
+      FFT2.prototype.createComplexArray = function createComplexArray() {
+        const res = new Array(this._csize);
+        for (var i10 = 0; i10 < res.length; i10++)
+          res[i10] = 0;
+        return res;
+      };
+      FFT2.prototype.toComplexArray = function toComplexArray(input, storage) {
+        var res = storage || this.createComplexArray();
+        for (var i10 = 0; i10 < res.length; i10 += 2) {
+          res[i10] = input[i10 >>> 1];
+          res[i10 + 1] = 0;
+        }
+        return res;
+      };
+      FFT2.prototype.completeSpectrum = function completeSpectrum(spectrum) {
+        var size = this._csize;
+        var half = size >>> 1;
+        for (var i10 = 2; i10 < half; i10 += 2) {
+          spectrum[size - i10] = spectrum[i10];
+          spectrum[size - i10 + 1] = -spectrum[i10 + 1];
+        }
+      };
+      FFT2.prototype.transform = function transform(out, data) {
+        if (out === data)
+          throw new Error("Input and output buffers must be different");
+        this._out = out;
+        this._data = data;
+        this._inv = 0;
+        this._transform4();
+        this._out = null;
+        this._data = null;
+      };
+      FFT2.prototype.realTransform = function realTransform(out, data) {
+        if (out === data)
+          throw new Error("Input and output buffers must be different");
+        this._out = out;
+        this._data = data;
+        this._inv = 0;
+        this._realTransform4();
+        this._out = null;
+        this._data = null;
+      };
+      FFT2.prototype.inverseTransform = function inverseTransform(out, data) {
+        if (out === data)
+          throw new Error("Input and output buffers must be different");
+        this._out = out;
+        this._data = data;
+        this._inv = 1;
+        this._transform4();
+        for (var i10 = 0; i10 < out.length; i10++)
+          out[i10] /= this.size;
+        this._out = null;
+        this._data = null;
+      };
+      FFT2.prototype._transform4 = function _transform4() {
+        var out = this._out;
+        var size = this._csize;
+        var width = this._width;
+        var step = 1 << width;
+        var len = size / step << 1;
+        var outOff;
+        var t2;
+        var bitrev = this._bitrev;
+        if (len === 4) {
+          for (outOff = 0, t2 = 0; outOff < size; outOff += len, t2++) {
+            const off2 = bitrev[t2];
+            this._singleTransform2(outOff, off2, step);
+          }
+        } else {
+          for (outOff = 0, t2 = 0; outOff < size; outOff += len, t2++) {
+            const off2 = bitrev[t2];
+            this._singleTransform4(outOff, off2, step);
+          }
+        }
+        var inv = this._inv ? -1 : 1;
+        var table = this.table;
+        for (step >>= 2; step >= 2; step >>= 2) {
+          len = size / step << 1;
+          var quarterLen = len >>> 2;
+          for (outOff = 0; outOff < size; outOff += len) {
+            var limit = outOff + quarterLen;
+            for (var i10 = outOff, k2 = 0; i10 < limit; i10 += 2, k2 += step) {
+              const A2 = i10;
+              const B2 = A2 + quarterLen;
+              const C2 = B2 + quarterLen;
+              const D2 = C2 + quarterLen;
+              const Ar = out[A2];
+              const Ai = out[A2 + 1];
+              const Br = out[B2];
+              const Bi = out[B2 + 1];
+              const Cr = out[C2];
+              const Ci = out[C2 + 1];
+              const Dr = out[D2];
+              const Di = out[D2 + 1];
+              const MAr = Ar;
+              const MAi = Ai;
+              const tableBr = table[k2];
+              const tableBi = inv * table[k2 + 1];
+              const MBr = Br * tableBr - Bi * tableBi;
+              const MBi = Br * tableBi + Bi * tableBr;
+              const tableCr = table[2 * k2];
+              const tableCi = inv * table[2 * k2 + 1];
+              const MCr = Cr * tableCr - Ci * tableCi;
+              const MCi = Cr * tableCi + Ci * tableCr;
+              const tableDr = table[3 * k2];
+              const tableDi = inv * table[3 * k2 + 1];
+              const MDr = Dr * tableDr - Di * tableDi;
+              const MDi = Dr * tableDi + Di * tableDr;
+              const T0r = MAr + MCr;
+              const T0i = MAi + MCi;
+              const T1r = MAr - MCr;
+              const T1i = MAi - MCi;
+              const T2r = MBr + MDr;
+              const T2i = MBi + MDi;
+              const T3r = inv * (MBr - MDr);
+              const T3i = inv * (MBi - MDi);
+              const FAr = T0r + T2r;
+              const FAi = T0i + T2i;
+              const FCr = T0r - T2r;
+              const FCi = T0i - T2i;
+              const FBr = T1r + T3i;
+              const FBi = T1i - T3r;
+              const FDr = T1r - T3i;
+              const FDi = T1i + T3r;
+              out[A2] = FAr;
+              out[A2 + 1] = FAi;
+              out[B2] = FBr;
+              out[B2 + 1] = FBi;
+              out[C2] = FCr;
+              out[C2 + 1] = FCi;
+              out[D2] = FDr;
+              out[D2 + 1] = FDi;
+            }
+          }
+        }
+      };
+      FFT2.prototype._singleTransform2 = function _singleTransform2(outOff, off2, step) {
+        const out = this._out;
+        const data = this._data;
+        const evenR = data[off2];
+        const evenI = data[off2 + 1];
+        const oddR = data[off2 + step];
+        const oddI = data[off2 + step + 1];
+        const leftR = evenR + oddR;
+        const leftI = evenI + oddI;
+        const rightR = evenR - oddR;
+        const rightI = evenI - oddI;
+        out[outOff] = leftR;
+        out[outOff + 1] = leftI;
+        out[outOff + 2] = rightR;
+        out[outOff + 3] = rightI;
+      };
+      FFT2.prototype._singleTransform4 = function _singleTransform4(outOff, off2, step) {
+        const out = this._out;
+        const data = this._data;
+        const inv = this._inv ? -1 : 1;
+        const step2 = step * 2;
+        const step3 = step * 3;
+        const Ar = data[off2];
+        const Ai = data[off2 + 1];
+        const Br = data[off2 + step];
+        const Bi = data[off2 + step + 1];
+        const Cr = data[off2 + step2];
+        const Ci = data[off2 + step2 + 1];
+        const Dr = data[off2 + step3];
+        const Di = data[off2 + step3 + 1];
+        const T0r = Ar + Cr;
+        const T0i = Ai + Ci;
+        const T1r = Ar - Cr;
+        const T1i = Ai - Ci;
+        const T2r = Br + Dr;
+        const T2i = Bi + Di;
+        const T3r = inv * (Br - Dr);
+        const T3i = inv * (Bi - Di);
+        const FAr = T0r + T2r;
+        const FAi = T0i + T2i;
+        const FBr = T1r + T3i;
+        const FBi = T1i - T3r;
+        const FCr = T0r - T2r;
+        const FCi = T0i - T2i;
+        const FDr = T1r - T3i;
+        const FDi = T1i + T3r;
+        out[outOff] = FAr;
+        out[outOff + 1] = FAi;
+        out[outOff + 2] = FBr;
+        out[outOff + 3] = FBi;
+        out[outOff + 4] = FCr;
+        out[outOff + 5] = FCi;
+        out[outOff + 6] = FDr;
+        out[outOff + 7] = FDi;
+      };
+      FFT2.prototype._realTransform4 = function _realTransform4() {
+        var out = this._out;
+        var size = this._csize;
+        var width = this._width;
+        var step = 1 << width;
+        var len = size / step << 1;
+        var outOff;
+        var t2;
+        var bitrev = this._bitrev;
+        if (len === 4) {
+          for (outOff = 0, t2 = 0; outOff < size; outOff += len, t2++) {
+            const off2 = bitrev[t2];
+            this._singleRealTransform2(outOff, off2 >>> 1, step >>> 1);
+          }
+        } else {
+          for (outOff = 0, t2 = 0; outOff < size; outOff += len, t2++) {
+            const off2 = bitrev[t2];
+            this._singleRealTransform4(outOff, off2 >>> 1, step >>> 1);
+          }
+        }
+        var inv = this._inv ? -1 : 1;
+        var table = this.table;
+        for (step >>= 2; step >= 2; step >>= 2) {
+          len = size / step << 1;
+          var halfLen = len >>> 1;
+          var quarterLen = halfLen >>> 1;
+          var hquarterLen = quarterLen >>> 1;
+          for (outOff = 0; outOff < size; outOff += len) {
+            for (var i10 = 0, k2 = 0; i10 <= hquarterLen; i10 += 2, k2 += step) {
+              var A2 = outOff + i10;
+              var B2 = A2 + quarterLen;
+              var C2 = B2 + quarterLen;
+              var D2 = C2 + quarterLen;
+              var Ar = out[A2];
+              var Ai = out[A2 + 1];
+              var Br = out[B2];
+              var Bi = out[B2 + 1];
+              var Cr = out[C2];
+              var Ci = out[C2 + 1];
+              var Dr = out[D2];
+              var Di = out[D2 + 1];
+              var MAr = Ar;
+              var MAi = Ai;
+              var tableBr = table[k2];
+              var tableBi = inv * table[k2 + 1];
+              var MBr = Br * tableBr - Bi * tableBi;
+              var MBi = Br * tableBi + Bi * tableBr;
+              var tableCr = table[2 * k2];
+              var tableCi = inv * table[2 * k2 + 1];
+              var MCr = Cr * tableCr - Ci * tableCi;
+              var MCi = Cr * tableCi + Ci * tableCr;
+              var tableDr = table[3 * k2];
+              var tableDi = inv * table[3 * k2 + 1];
+              var MDr = Dr * tableDr - Di * tableDi;
+              var MDi = Dr * tableDi + Di * tableDr;
+              var T0r = MAr + MCr;
+              var T0i = MAi + MCi;
+              var T1r = MAr - MCr;
+              var T1i = MAi - MCi;
+              var T2r = MBr + MDr;
+              var T2i = MBi + MDi;
+              var T3r = inv * (MBr - MDr);
+              var T3i = inv * (MBi - MDi);
+              var FAr = T0r + T2r;
+              var FAi = T0i + T2i;
+              var FBr = T1r + T3i;
+              var FBi = T1i - T3r;
+              out[A2] = FAr;
+              out[A2 + 1] = FAi;
+              out[B2] = FBr;
+              out[B2 + 1] = FBi;
+              if (i10 === 0) {
+                var FCr = T0r - T2r;
+                var FCi = T0i - T2i;
+                out[C2] = FCr;
+                out[C2 + 1] = FCi;
+                continue;
+              }
+              if (i10 === hquarterLen)
+                continue;
+              var ST0r = T1r;
+              var ST0i = -T1i;
+              var ST1r = T0r;
+              var ST1i = -T0i;
+              var ST2r = -inv * T3i;
+              var ST2i = -inv * T3r;
+              var ST3r = -inv * T2i;
+              var ST3i = -inv * T2r;
+              var SFAr = ST0r + ST2r;
+              var SFAi = ST0i + ST2i;
+              var SFBr = ST1r + ST3i;
+              var SFBi = ST1i - ST3r;
+              var SA = outOff + quarterLen - i10;
+              var SB = outOff + halfLen - i10;
+              out[SA] = SFAr;
+              out[SA + 1] = SFAi;
+              out[SB] = SFBr;
+              out[SB + 1] = SFBi;
+            }
+          }
+        }
+      };
+      FFT2.prototype._singleRealTransform2 = function _singleRealTransform2(outOff, off2, step) {
+        const out = this._out;
+        const data = this._data;
+        const evenR = data[off2];
+        const oddR = data[off2 + step];
+        const leftR = evenR + oddR;
+        const rightR = evenR - oddR;
+        out[outOff] = leftR;
+        out[outOff + 1] = 0;
+        out[outOff + 2] = rightR;
+        out[outOff + 3] = 0;
+      };
+      FFT2.prototype._singleRealTransform4 = function _singleRealTransform4(outOff, off2, step) {
+        const out = this._out;
+        const data = this._data;
+        const inv = this._inv ? -1 : 1;
+        const step2 = step * 2;
+        const step3 = step * 3;
+        const Ar = data[off2];
+        const Br = data[off2 + step];
+        const Cr = data[off2 + step2];
+        const Dr = data[off2 + step3];
+        const T0r = Ar + Cr;
+        const T1r = Ar - Cr;
+        const T2r = Br + Dr;
+        const T3r = inv * (Br - Dr);
+        const FAr = T0r + T2r;
+        const FBr = T1r;
+        const FBi = -T3r;
+        const FCr = T0r - T2r;
+        const FDr = T1r;
+        const FDi = T3r;
+        out[outOff] = FAr;
+        out[outOff + 1] = 0;
+        out[outOff + 2] = FBr;
+        out[outOff + 3] = FBi;
+        out[outOff + 4] = FCr;
+        out[outOff + 5] = 0;
+        out[outOff + 6] = FDr;
+        out[outOff + 7] = FDi;
+      };
+    }
+  });
+
   // node_modules/@tauri-apps/api/tauri-3147d768.js
   var t = function(n10, e4) {
     return (t = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(t2, n11) {
@@ -31685,6 +32062,326 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   // web/src/hooks.ts
   var import_react41 = __toESM(require_react());
 
+  // web/src/api.ts
+  var TauriAPI = {
+    type: "Tauri",
+    listenToPackets: (cb) => {
+      return o6("device-packet", (event) => {
+        if (event.payload.packet_type == "log") {
+          const { log_type, log_message } = event.payload;
+          console.log("DEVICE (" + log_type + "): " + log_message);
+        }
+        return cb(event.payload);
+      });
+    },
+    enumerateDevices: () => __async(void 0, null, function* () {
+      const resp = yield i9("enumerate_devices");
+      console.log(resp);
+      return resp;
+    }),
+    connectDevice: (uri) => __async(void 0, null, function* () {
+      const loc = { uri };
+      const resp = yield i9("connect_device", loc);
+      return resp;
+    }),
+    disconnect: () => __async(void 0, null, function* () {
+      yield i9("disconnect");
+    })
+  };
+  function randn_bm() {
+    let u11 = 0, v3 = 0;
+    while (u11 === 0)
+      u11 = Math.random();
+    while (v3 === 0)
+      v3 = Math.random();
+    let num = Math.sqrt(-2 * Math.log(u11)) * Math.cos(2 * Math.PI * v3);
+    num = num / 10 + 0.5;
+    if (num > 1 || num < 0)
+      return randn_bm();
+    return num;
+  }
+  var demoInterval = 100;
+  var demoPacketsPerInterval = 10;
+  var demoT0 = 0;
+  var demoSent = 0;
+  var demoOrientationConnected = false;
+  var demoOrientationCb;
+  var demoSampleNumber = 0;
+  function handleOrientation(e4) {
+    if (demoOrientationCb && e4.alpha !== null && e4.beta !== null && e4.gamma !== null) {
+      demoOrientationCb({
+        packet_type: "data",
+        sample_number: demoSampleNumber++,
+        data_floats: [e4.alpha / 360, e4.beta / 180, e4.gamma / 180]
+      });
+    }
+  }
+  var DemoAPI = {
+    type: "Demo",
+    listenToPackets: (cb) => {
+      demoSampleNumber = 0;
+      if (demoOrientationConnected) {
+        demoOrientationCb = cb;
+        return Promise.resolve(function stopListening2() {
+          demoOrientationCb = void 0;
+        });
+      }
+      const sendDataPacket = () => cb({
+        packet_type: "data",
+        sample_number: demoSampleNumber++,
+        data_floats: [
+          2 * randn_bm() - 1,
+          1 * randn_bm() - 0.5 + Math.sin(demoSampleNumber / (2 * Math.PI)) * 0.5,
+          Math.sin(demoSampleNumber / (2 * Math.PI) / 3) * 0.3
+        ]
+      });
+      const sendLogPacket = () => cb({
+        packet_type: "log",
+        log_type: "warn",
+        log_message: "This is a log message"
+      });
+      let timer;
+      const sendAndSchedule = () => {
+        sendLogPacket();
+        const now = performance.now();
+        if (demoT0 === 0)
+          demoT0 = now;
+        const delta = now - demoT0;
+        let toSend = Math.round(delta * demoPacketsPerInterval / demoInterval) - demoSent;
+        demoSent += toSend;
+        if (toSend > 1e5) {
+          console.log("Demo data generation too far behind, giving up");
+          demoT0 = performance.now();
+          demoSent = 0;
+          toSend = 0;
+        }
+        for (let i10 = 0; i10 < toSend; i10++) {
+          sendDataPacket();
+        }
+      };
+      const stopListening = () => {
+        console.log("clearing timeout for fake demo data generation");
+        clearInterval(timer);
+      };
+      timer = setInterval(sendAndSchedule, demoInterval);
+      return Promise.resolve(stopListening);
+    },
+    enumerateDevices: () => __async(void 0, null, function* () {
+      yield new Promise((r7) => setTimeout(r7, 100));
+      return Promise.resolve([
+        "dummy 10Hz",
+        "dummy 100Hz",
+        "dummy 1000Hz",
+        ..."ontouchstart" in window || window.location.hostname === "localhost" ? ["device orientation (requires mobile device)"] : []
+      ]);
+    }),
+    connectDevice: (uri) => __async(void 0, null, function* () {
+      let channels = ["dummy.x", "dummy.y", "dummy.z"];
+      if (uri.includes("10Hz")) {
+        demoInterval = 500;
+        demoPacketsPerInterval = 5;
+      } else if (uri.includes("100Hz")) {
+        demoInterval = 100;
+        demoPacketsPerInterval = 10;
+      } else if (uri.includes("1000Hz")) {
+        demoInterval = 20;
+        demoPacketsPerInterval = 20;
+      } else if (uri.includes("orientation")) {
+        if (typeof DeviceOrientationEvent.requestPermission === "function") {
+          yield DeviceOrientationEvent.requestPermission();
+        }
+        window.addEventListener("deviceorientation", handleOrientation, true);
+        demoOrientationConnected = true;
+        channels = ["alpha", "beta", "gamma"];
+      } else {
+        throw new Error("Demo API can only connect to dummy data source");
+      }
+      demoSent = 0;
+      demoT0 = 0;
+      yield new Promise((r7) => setTimeout(r7, 100));
+      return Promise.resolve({
+        name: "demo '" + uri + "'",
+        channels
+      });
+    }),
+    disconnect: () => {
+      window.removeEventListener("deviceorientation", handleOrientation);
+      return Promise.resolve();
+    }
+  };
+  var encoder = new TextEncoder();
+  var decoder = new TextDecoder();
+  function sendHeartbeat(writer) {
+    return __async(this, null, function* () {
+      const data = Uint8Array.from([
+        192,
+        5,
+        0,
+        0,
+        0,
+        46,
+        47,
+        154,
+        22,
+        192
+      ]);
+      yield writer.write(data);
+    });
+  }
+  function processPacket(pkt) {
+    if (pkt.byteLength < 8)
+      return;
+    if (pkt[0] != 1)
+      return;
+    const payloadSize = pkt[2] + 256 * pkt[3];
+    if (payloadSize + 8 < pkt.byteLength || payloadSize <= 5)
+      return;
+    console.log("LOG:", decoder.decode(pkt.subarray(9, payloadSize + 4)));
+    const log_message = decoder.decode(pkt.subarray(9, payloadSize + 4));
+    return {
+      packet_type: "log",
+      log_type: "warn",
+      log_message
+    };
+  }
+  var WebSerialAPI = class {
+    constructor() {
+      this.type = "WebSerial";
+      this.breakout = false;
+    }
+    static getInstance() {
+      if (!this.instance) {
+        this.instance = new WebSerialAPI();
+      }
+      return this.instance;
+    }
+    listenToPackets(_cb) {
+      return __async(this, null, function* () {
+        throw new Error("not implemented");
+        return Promise.resolve(function cleanup() {
+        });
+      });
+    }
+    enumerateDevices() {
+      return __async(this, null, function* () {
+        let port;
+        try {
+          port = yield navigator.serial.requestPort();
+        } catch (e4) {
+          return Object.keys(this.ports);
+        }
+        let alreadyAdded = false;
+        for (const port2 of Object.values(this.ports)) {
+          if (this.port === port2)
+            alreadyAdded = true;
+        }
+        if (alreadyAdded) {
+          return Object.keys(this.ports);
+        }
+        this.ports["serial-device-" + Object.keys(this.ports).length] = this.port;
+        return Object.keys(this.ports);
+      });
+    }
+    connectDevice(uri) {
+      return __async(this, null, function* () {
+        if (Object.keys(this.ports).includes(uri)) {
+          throw new Error("No such serial port as " + uri);
+        }
+        const port = this.ports[uri];
+        this.port = port;
+        yield port.open({ baudRate: 115200, bufferSize: 4096 });
+        if (!port.writable) {
+          throw new Error("the port is supposed to be writeable");
+        }
+        yield sendHeartbeat(port.writable.getWriter());
+        this.receiveLoop = this.receive(port);
+        return Promise.resolve({
+          name: "serial port name TODO",
+          channels: ["TODOa"]
+        });
+      });
+    }
+    receive(port) {
+      return __async(this, null, function* () {
+        var curPacket = [];
+        while (port.readable && !this.breakout) {
+          let reader = port.readable.getReader();
+          try {
+            while (!this.breakout) {
+              let escape = false;
+              const { value, done } = yield reader.read();
+              if (done || this.breakout || value === void 0)
+                break;
+              value.forEach((byte) => {
+                if (byte === 192) {
+                  processPacket(Uint8Array.from(curPacket));
+                  curPacket = [];
+                  escape = false;
+                } else {
+                  if (escape) {
+                    escape = false;
+                    if (byte === 220)
+                      curPacket.push(192);
+                    if (byte === 221)
+                      curPacket.push(219);
+                  } else {
+                    if (byte === 219)
+                      escape = true;
+                    else
+                      curPacket.push(byte);
+                  }
+                }
+              });
+            }
+          } catch (error) {
+            console.log("ERROR:", error);
+          } finally {
+            reader.releaseLock();
+          }
+        }
+      });
+    }
+    disconnect() {
+      return __async(this, null, function* () {
+        throw new Error("not implemented");
+      });
+    }
+  };
+  var WebSocketAPI = class {
+    constructor() {
+      this.type = "WebSocket";
+    }
+    static getInstance() {
+      if (!this.instance) {
+        this.instance = new WebSocketAPI();
+      }
+      return this.instance;
+    }
+    listenToPackets(_cb) {
+      return __async(this, null, function* () {
+        throw new Error("not implemented");
+        return Promise.resolve(function cleanup() {
+        });
+      });
+    }
+    enumerateDevices() {
+      throw new Error("not implemented");
+      return Promise.resolve([]);
+    }
+    connectDevice(_uri) {
+      throw new Error("not implemented");
+      return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
+    }
+    disconnect() {
+      return __async(this, null, function* () {
+        throw new Error("not implemented");
+      });
+    }
+  };
+
+  // web/src/plotting.ts
+  var import_fft = __toESM(require_fft());
+
   // node_modules/uplot/dist/uPlot.esm.js
   var FEAT_TIME = true;
   function closestIdx(num, arr, lo, hi) {
@@ -35194,330 +35891,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     paths.spline = monotoneCubic;
   }
 
-  // web/src/api.ts
-  var encoder = new TextEncoder();
-  var decoder = new TextDecoder();
-  var TauriAPI = {
-    type: "Tauri",
-    listenToPackets: (cb) => {
-      return o6("device-packet", (event) => {
-        if (event.payload.packet_type == "log") {
-          console.log("DEVICE (" + event.payload.log_type + "): " + event.payload.log_message);
-        }
-        return cb(event.payload);
-      });
-    },
-    enumerateDevices: () => __async(void 0, null, function* () {
-      const resp = yield i9("enumerate_devices");
-      console.log(resp);
-      return resp;
-    }),
-    connectDevice: (uri) => __async(void 0, null, function* () {
-      const resp = yield i9("connect_device", {
-        uri
-      });
-      console.log(resp);
-      return resp;
-    }),
-    disconnect: () => __async(void 0, null, function* () {
-      const resp = yield i9("disconnect");
-      console.log(resp);
-    })
-  };
-  function randn_bm() {
-    let u11 = 0, v3 = 0;
-    while (u11 === 0)
-      u11 = Math.random();
-    while (v3 === 0)
-      v3 = Math.random();
-    let num = Math.sqrt(-2 * Math.log(u11)) * Math.cos(2 * Math.PI * v3);
-    num = num / 10 + 0.5;
-    if (num > 1 || num < 0)
-      return randn_bm();
-    return num;
-  }
-  var demoInterval = 100;
-  var demoPacketsPerInterval = 10;
-  var demoT0 = 0;
-  var demoSent = 0;
-  var DemoAPI = {
-    type: "Demo",
-    listenToPackets: (cb) => {
-      let sampleNumber = 0;
-      const sendDataPacket = () => cb({
-        packet_type: "data",
-        sample_number: sampleNumber++,
-        data_floats: [
-          2 * randn_bm() - 1,
-          2 * randn_bm() - 1,
-          2 * randn_bm() - 1
-        ]
-      });
-      const sendLogPacket = () => cb({
-        packet_type: "log",
-        log_type: "warn",
-        log_message: "This is a log message"
-      });
-      let timer;
-      const sendAndSchedule = () => {
-        sendLogPacket();
-        const now = performance.now();
-        if (demoT0 === 0)
-          demoT0 = now;
-        const delta = now - demoT0;
-        let toSend = Math.round(delta * demoPacketsPerInterval / demoInterval) - demoSent;
-        demoSent += toSend;
-        if (toSend > 1e5) {
-          console.log("Demo data generation too far behind, giving up");
-          demoT0 = performance.now();
-          demoSent = 0;
-          toSend = 0;
-        }
-        for (let i10 = 0; i10 < toSend; i10++) {
-          sendDataPacket();
-        }
-      };
-      const stopListening = () => {
-        console.log("clearing timeout for fake demo data generation");
-        clearInterval(timer);
-      };
-      timer = setInterval(sendAndSchedule, demoInterval);
-      return Promise.resolve(stopListening);
-    },
-    enumerateDevices: () => __async(void 0, null, function* () {
-      yield new Promise((r7) => setTimeout(r7, 100));
-      return Promise.resolve(["dummy 10Hz", "dummy 100Hz", "dummy 1000Hz"]);
-    }),
-    connectDevice: (uri) => __async(void 0, null, function* () {
-      if (uri.slice(0, 5) !== "dummy") {
-        throw new Error("Demo API can only connect to dummy data source");
-      }
-      if (uri.includes("10Hz")) {
-        demoInterval = 500;
-        demoPacketsPerInterval = 5;
-      } else if (uri.includes("100Hz")) {
-        demoInterval = 100;
-        demoPacketsPerInterval = 10;
-      } else if (uri.includes("1000Hz")) {
-        demoInterval = 20;
-        demoPacketsPerInterval = 20;
-      }
-      demoSent = 0;
-      demoT0 = 0;
-      yield new Promise((r7) => setTimeout(r7, 100));
-      return Promise.resolve({
-        name: "demo '" + uri + "'",
-        channels: ["gmr.x", "gmr.y", "gmr.z"]
-      });
-    }),
-    disconnect: () => Promise.resolve()
-  };
-  function sendHeartbeat(writer) {
-    return __async(this, null, function* () {
-      const data = Uint8Array.from([
-        192,
-        5,
-        0,
-        0,
-        0,
-        46,
-        47,
-        154,
-        22,
-        192
-      ]);
-      yield writer.write(data);
-    });
-  }
-  function processPacket(pkt) {
-    if (pkt.byteLength < 8)
-      return;
-    if (pkt[0] != 1)
-      return;
-    const payloadSize = pkt[2] + 256 * pkt[3];
-    if (payloadSize + 8 < pkt.byteLength || payloadSize <= 5)
-      return;
-    console.log("LOG:", decoder.decode(pkt.subarray(9, payloadSize + 4)));
-    const log_message = decoder.decode(pkt.subarray(9, payloadSize + 4));
-    return {
-      packet_type: "log",
-      log_type: "warn",
-      log_message
-    };
-  }
-  var WebSerialAPI = class {
-    constructor() {
-      this.type = "WebSerial";
-      this.breakout = false;
-    }
-    static getInstance() {
-      if (!this.instance) {
-        this.instance = new WebSerialAPI();
-      }
-      return this.instance;
-    }
-    listenToPackets(_cb) {
-      return __async(this, null, function* () {
-        throw new Error("not implemented");
-        return Promise.resolve(function cleanup() {
-        });
-      });
-    }
-    enumerateDevices() {
-      return __async(this, null, function* () {
-        let port;
-        try {
-          port = yield navigator.serial.requestPort();
-        } catch (e4) {
-          return Object.keys(this.ports);
-        }
-        let alreadyAdded = false;
-        for (const port2 of Object.values(this.ports)) {
-          if (this.port === port2)
-            alreadyAdded = true;
-        }
-        if (alreadyAdded) {
-          return Object.keys(this.ports);
-        }
-        this.ports["serial-device-" + Object.keys(this.ports).length] = this.port;
-        return Object.keys(this.ports);
-      });
-    }
-    connectDevice(uri) {
-      return __async(this, null, function* () {
-        if (Object.keys(this.ports).includes(uri)) {
-          throw new Error("No such serial port as " + uri);
-        }
-        const port = this.ports[uri];
-        this.port = port;
-        yield port.open({ baudRate: 115200, bufferSize: 4096 });
-        if (!port.writable) {
-          throw new Error("the port is supposed to be writeable");
-        }
-        yield sendHeartbeat(port.writable.getWriter());
-        this.receiveLoop = this.receive(port);
-        return Promise.resolve({
-          name: "serial port name TODO",
-          channels: ["TODOa"]
-        });
-      });
-    }
-    receive(port) {
-      return __async(this, null, function* () {
-        var curPacket = [];
-        while (port.readable && !this.breakout) {
-          let reader = port.readable.getReader();
-          try {
-            while (!this.breakout) {
-              let escape = false;
-              const { value, done } = yield reader.read();
-              if (done || this.breakout || value === void 0)
-                break;
-              value.forEach((byte) => {
-                if (byte === 192) {
-                  processPacket(Uint8Array.from(curPacket));
-                  curPacket = [];
-                  escape = false;
-                } else {
-                  if (escape) {
-                    escape = false;
-                    if (byte === 220)
-                      curPacket.push(192);
-                    if (byte === 221)
-                      curPacket.push(219);
-                  } else {
-                    if (byte === 219)
-                      escape = true;
-                    else
-                      curPacket.push(byte);
-                  }
-                }
-              });
-            }
-          } catch (error) {
-            console.log("ERROR:", error);
-          } finally {
-            reader.releaseLock();
-          }
-        }
-      });
-    }
-    disconnect() {
-      return __async(this, null, function* () {
-        throw new Error("not implemented");
-      });
-    }
-  };
-  var WebSocketAPI = class {
-    constructor() {
-      this.type = "WebSocket";
-    }
-    static getInstance() {
-      if (!this.instance) {
-        this.instance = new WebSocketAPI();
-      }
-      return this.instance;
-    }
-    listenToPackets(_cb) {
-      return __async(this, null, function* () {
-        throw new Error("not implemented");
-        return Promise.resolve(function cleanup() {
-        });
-      });
-    }
-    enumerateDevices() {
-      throw new Error("not implemented");
-      return Promise.resolve([]);
-    }
-    connectDevice(_uri) {
-      throw new Error("not implemented");
-      return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
-    }
-    disconnect() {
-      return __async(this, null, function* () {
-        throw new Error("not implemented");
-      });
-    }
-  };
-
-  // web/src/hooks.ts
-  var buildApi = (apiType) => {
-    if (apiType === "Demo")
-      return DemoAPI;
-    if (apiType === "Tauri")
-      return TauriAPI;
-    if (apiType === "WebSerial")
-      return WebSerialAPI.getInstance();
-    if (apiType === "WebSocket")
-      return WebSocketAPI.getInstance();
-    throw new Error("Unknown API Type " + apiType);
-  };
-  var useAPI = (initial) => {
-    const [apiType, setApiType] = (0, import_react41.useState)(() => {
-      if (initial)
-        return initial;
-      if (typeof window.__TAURI__ !== "undefined")
-        return "Tauri";
-      return "Demo";
-    });
-    const api = (0, import_react41.useMemo)(() => buildApi(apiType), [apiType]);
-    return { api, changeAPIType: setApiType };
-  };
-  var useLogs = (capacity) => {
-    const [logs, setLogs] = (0, import_react41.useState)([]);
-    const addLogMessage = (0, import_react41.useCallback)((msg) => {
-      setLogs((logs2) => {
-        if (logs2.length >= capacity) {
-          return [...logs2.slice(1), msg];
-        }
-        return [...logs2, msg];
-      });
-    }, []);
-    const clearLogs = (0, import_react41.useCallback)(() => {
-      setLogs([]);
-    }, []);
-    return [logs, addLogMessage, clearLogs];
-  };
+  // web/src/plotting.ts
   var DataBuffer = class {
     constructor(info, size = 1e3) {
       this.sampleNums = [];
@@ -35551,6 +35925,30 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
           return fps;
         return 0;
       };
+      this.fft = (channel, n10 = 4096) => {
+        const d6 = this.data[channel];
+        const size = __pow(2, Math.floor(Math.log2(Math.min(d6.length, n10))));
+        const hz = this.observedHz();
+        if (size < 1 || !hz)
+          return { amplitudes: [], freqs: [] };
+        const fft = new import_fft.default(size);
+        const input = d6.slice(-size);
+        for (let i10 = 0; i10 < size; i10++) {
+          const m4 = 0.5 * (1 - Math.cos(2 * Math.PI * i10 / (size - 1)));
+          input[i10] = m4 * input[i10];
+        }
+        const out = fft.createComplexArray();
+        fft.realTransform(out, input);
+        const freqs = [];
+        const amplitudes = [];
+        for (let i10 = 0; i10 < size / 2; i10++) {
+          const re = out[2 * i10];
+          const im = out[2 * i10 + 1];
+          amplitudes.push(Math.sqrt(re * re + im * im));
+          freqs.push(i10 * hz / size);
+        }
+        return { freqs, amplitudes };
+      };
       this.deviceName = info.name;
       this.data = [];
       this.channelNames = info.channels;
@@ -35576,155 +35974,16 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       return seen;
     }
   };
-  var useDevices = (api, addLogMessage) => {
-    const [devices, setDevices] = (0, import_react41.useState)({});
-    const [connectedDevice, setConnectedDevice] = (0, import_react41.useState)();
-    const stopListening = (0, import_react41.useRef)();
-    const dataBuffer = (0, import_react41.useRef)();
-    const disconnect = () => __async(void 0, null, function* () {
-      stopListening.current && stopListening.current();
-      yield api.disconnect();
-      setConnectedDevice(void 0);
-    });
-    const connect = (deviceId) => __async(void 0, null, function* () {
-      if (connectedDevice) {
-        stopListening.current && stopListening.current();
-        yield api.disconnect();
-        setConnectedDevice(void 0);
-      }
-      const info = yield api.connectDevice(deviceId);
-      setConnectedDevice(deviceId);
-      setDevices((devices2) => __spreadProps(__spreadValues({}, devices2), { [deviceId]: info }));
-      dataBuffer.current = new DataBuffer(info, 1e3);
-      const onPacket = (packet) => {
-        if (packet.packet_type === "data") {
-          dataBuffer.current.addFrame(packet);
-        } else if (packet.packet_type === "log") {
-          addLogMessage({
-            log_type: packet.log_type,
-            log_message: packet.log_message
-          });
-        } else {
-          throw new Error("received unknown packet type");
-        }
-      };
-      stopListening.current = yield api.listenToPackets(onPacket);
-      return;
-    });
-    const updateDevices = () => __async(void 0, null, function* () {
-      yield disconnect();
-      setDevices({});
-      const deviceIds = yield api.enumerateDevices();
-      const devices2 = Object.fromEntries(deviceIds.map((id) => [id, void 0]));
-      setDevices(devices2);
-    });
-    const updateDevicesRef = (0, import_react41.useRef)(updateDevices);
-    updateDevicesRef.current = updateDevices;
-    (0, import_react41.useEffect)(() => {
-      updateDevicesRef.current();
-    }, [api]);
+  function getSize() {
     return {
-      connect,
-      devices,
-      disconnect,
-      connectedDevice,
-      dataBuffer: dataBuffer.current,
-      updateDevices
+      width: window.innerWidth - 40,
+      height: Math.floor((window.innerWidth - 40) / 3)
     };
-  };
-  var useFPS = (useRAF = false) => {
-    let renders = (0, import_react41.useRef)([]);
-    let lastLog = (0, import_react41.useRef)(performance.now());
-    let elRef = (0, import_react41.useRef)(null);
-    const reportFrame = (0, import_react41.useCallback)(() => {
-      const now = performance.now();
-      renders.current.push(now);
-      renders.current = renders.current.filter((t2) => t2 > now - 1e3);
-      if (performance.now() > lastLog.current + 1e3 && elRef.current) {
-        elRef.current.innerHTML = "" + renders.current.length;
-      }
-    }, []);
-    const setFPSRef = (0, import_react41.useCallback)((el) => {
-      elRef.current = el;
-      if (el) {
-        el.innerHTML = "" + renders.current.length + " FPS";
-      }
-    }, []);
-    (0, import_react41.useEffect)(() => {
-      if (useRAF) {
-        let requestId;
-        const onRaf = () => {
-          reportFrame();
-          requestId = requestAnimationFrame(onRaf);
-        };
-        onRaf();
-        return function cleanup() {
-          cancelAnimationFrame(requestId);
-        };
-      }
-      return;
-    }, [reportFrame]);
-    return { reportFrame, setFPSRef };
-  };
-  var useWhatChanged = (props, label = "") => {
-    const changed = [];
-    const prev = (0, import_react41.useRef)();
-    if (!prev.current) {
-      prev.current = props;
-      return;
-    }
-    for (const prop of Object.keys(props)) {
-      if (props[prop] !== prev.current[prop]) {
-        changed.push(prop);
-      }
-    }
-    if (changed.length) {
-      console.log("Props for", label, "changed!");
-      for (const prop of changed) {
-        console.log(prop, "was", prev.current[prop], "and is now", props[prop]);
-      }
-    }
-    prev.current = props;
-  };
-  var useUplot = (dataBuffer) => {
-    const plot = (0, import_react41.useRef)();
-    const [plotting, setPlotting] = (0, import_react41.useState)(false);
-    const [el, setPlotEl] = (0, import_react41.useState)(null);
-    const start2 = () => {
-      var _a;
-      if (!((_a = plot.current) == null ? void 0 : _a.start))
-        return;
-      plot.current.start();
-      setPlotting(true);
-    };
-    const stop = () => {
-      var _a;
-      setPlotting(false);
-      ((_a = plot.current) == null ? void 0 : _a.stop) && plot.current.stop();
-    };
-    useWhatChanged({ dataBuffer, el }, "running create plot useEffect");
-    (0, import_react41.useEffect)(() => {
-      if (el) {
-        plot.current = makePlot(el, dataBuffer);
-        start2();
-        return function cleanup() {
-          var _a;
-          (_a = plot.current) == null ? void 0 : _a.destroy();
-          plot.current = void 0;
-          el.innerHTML = "";
-        };
-      }
-      return;
-    }, [dataBuffer, el]);
-    return { setPlotEl, start: start2, stop, plotting };
-  };
-  function makePlot(el, dataBuffer) {
-    function getSize() {
-      return {
-        width: window.innerWidth - 40,
-        height: Math.floor((window.innerWidth - 40) / 3)
-      };
-    }
+  }
+  function fpsFormat(num) {
+    return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
+  }
+  var makePlot = (el, dataBuffer) => {
     const scales = {
       x: {
         time: false
@@ -35752,10 +36011,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
         }))
       ]
     });
-    let u11 = new uPlot(opts, [dataBuffer.positions, ...dataBuffer.data], el);
-    function fpsFormat(num) {
-      return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
-    }
+    const u11 = new uPlot(opts, [dataBuffer.positions, ...dataBuffer.data], el);
     let scheduledPlotUpdate;
     let lastDataUpdate = 0;
     function update(t2 = performance.now()) {
@@ -35800,11 +36056,230 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       u11.destroy();
     }
     return { plot: u11, start: update, stop: stopUpdating, destroy };
-  }
+  };
+  var makeFFTPlot = (channelIndex) => (el, dataBuffer) => {
+    const u11 = new uPlot({
+      width: window.innerWidth - 40,
+      height: 160,
+      pxAlign: 0,
+      axes: [{ show: true }],
+      ms: 1,
+      scales: { x: { time: false } },
+      legend: { show: false },
+      series: [
+        {},
+        {
+          stroke: "black",
+          spanGaps: true,
+          pxAlign: 0,
+          points: { show: false }
+        }
+      ]
+    }, [dataBuffer.positions, ...dataBuffer.data], el);
+    let scheduledPlotUpdate;
+    function update() {
+      const observedHz = dataBuffer.observedHz();
+      if (dataBuffer.alreadySeenBy(u11) || !observedHz) {
+        scheduledPlotUpdate = requestAnimationFrame(update);
+        return;
+      }
+      const { amplitudes, freqs } = dataBuffer.fft(channelIndex);
+      u11.setData([freqs, amplitudes], false);
+      u11.setScale("x", {
+        min: 0,
+        max: freqs[freqs.length - 1]
+      });
+      scheduledPlotUpdate = requestAnimationFrame(update);
+    }
+    let plotStillExists = true;
+    let scheduledResizeP;
+    function onWindowResize() {
+      if (scheduledResizeP)
+        return;
+      scheduledResizeP = new Promise((r7) => __async(this, null, function* () {
+        yield new Promise((r8) => setTimeout(r8, 100));
+        scheduledResizeP = void 0;
+        if (!plotStillExists)
+          return;
+        u11.setSize({ width: window.innerWidth - 40, height: 160 });
+      }));
+    }
+    window.addEventListener("resize", onWindowResize);
+    function stopUpdating() {
+      cancelAnimationFrame(scheduledPlotUpdate);
+    }
+    function destroy() {
+      stopUpdating();
+      window.removeEventListener("resize", onWindowResize);
+      u11.destroy();
+    }
+    return { plot: u11, start: update, stop: stopUpdating, destroy };
+  };
+
+  // web/src/hooks.ts
+  var buildApi = (apiType) => {
+    if (apiType === "Demo")
+      return DemoAPI;
+    if (apiType === "Tauri")
+      return TauriAPI;
+    if (apiType === "WebSerial")
+      return WebSerialAPI.getInstance();
+    if (apiType === "WebSocket")
+      return WebSocketAPI.getInstance();
+    throw new Error("Unknown API Type " + apiType);
+  };
+  var useDeviceAPI = (initial) => {
+    const [apiType, setApiType] = (0, import_react41.useState)(() => {
+      if (initial)
+        return initial;
+      if (typeof window.__TAURI__ !== "undefined")
+        return "Tauri";
+      return "Demo";
+    });
+    const api = (0, import_react41.useMemo)(() => buildApi(apiType), [apiType]);
+    return { api, changeAPIType: setApiType };
+  };
+  var useLogs = (capacity) => {
+    const [logs, setLogs] = (0, import_react41.useState)([]);
+    const addLogMessage = (0, import_react41.useCallback)((msg) => {
+      setLogs((logs2) => {
+        if (logs2.length >= capacity) {
+          return [...logs2.slice(1), msg];
+        }
+        return [...logs2, msg];
+      });
+    }, []);
+    const clearLogs = (0, import_react41.useCallback)(() => {
+      setLogs([]);
+    }, []);
+    return [logs, addLogMessage, clearLogs];
+  };
+  var useDevices = (api, addLogMessage) => {
+    const [devices, setDevices] = (0, import_react41.useState)({});
+    const [connectedDevice, setConnectedDevice] = (0, import_react41.useState)();
+    const stopListening = (0, import_react41.useRef)();
+    const dataBuffer = (0, import_react41.useRef)();
+    const disconnect = () => __async(void 0, null, function* () {
+      stopListening.current && stopListening.current();
+      yield api.disconnect();
+      setConnectedDevice(void 0);
+    });
+    const connect = (deviceId) => __async(void 0, null, function* () {
+      if (connectedDevice) {
+        stopListening.current && stopListening.current();
+        yield api.disconnect();
+        setConnectedDevice(void 0);
+      }
+      const info = yield api.connectDevice(deviceId);
+      setConnectedDevice(deviceId);
+      setDevices((devices2) => __spreadProps(__spreadValues({}, devices2), { [deviceId]: info }));
+      dataBuffer.current = new DataBuffer(info, 1e3);
+      const onPacket = (packet) => {
+        if (packet.packet_type === "data") {
+          dataBuffer.current.addFrame(packet);
+        } else if (packet.packet_type === "log") {
+          addLogMessage({
+            log_type: packet.log_type,
+            log_message: packet.log_message
+          });
+        } else {
+          throw new Error("received unknown packet type:" + packet.packet_type);
+        }
+      };
+      stopListening.current = yield api.listenToPackets(onPacket);
+      return;
+    });
+    const updateDevices = () => __async(void 0, null, function* () {
+      yield disconnect();
+      setDevices({});
+      const deviceIds = yield api.enumerateDevices();
+      const devices2 = Object.fromEntries(deviceIds.map((id) => [id, void 0]));
+      setDevices(devices2);
+    });
+    const updateDevicesRef = (0, import_react41.useRef)(updateDevices);
+    updateDevicesRef.current = updateDevices;
+    (0, import_react41.useEffect)(() => {
+      updateDevicesRef.current();
+    }, [api]);
+    return {
+      connect,
+      devices,
+      disconnect,
+      connectedDevice,
+      dataBuffer: dataBuffer.current,
+      updateDevices
+    };
+  };
+  var useFPS = (useRAF = false) => {
+    let renders = (0, import_react41.useRef)([]);
+    let lastLog = (0, import_react41.useRef)(performance.now());
+    let elRef = (0, import_react41.useRef)(null);
+    const reportFrame = (0, import_react41.useCallback)(() => {
+      const now = performance.now();
+      renders.current.push(now);
+      renders.current = renders.current.filter((t2) => t2 > now - 1e3);
+      if (now > lastLog.current + 1e3 && elRef.current) {
+        lastLog.current = now;
+        elRef.current.innerHTML = "" + renders.current.length + " FPS";
+      }
+    }, []);
+    const setFPSRef = (0, import_react41.useCallback)((el) => {
+      elRef.current = el;
+      if (el) {
+        el.innerHTML = renders.current.length + " FPS";
+      }
+    }, []);
+    (0, import_react41.useEffect)(() => {
+      if (useRAF) {
+        let requestId;
+        const onRaf = () => {
+          reportFrame();
+          requestId = requestAnimationFrame(onRaf);
+        };
+        onRaf();
+        return function cleanup() {
+          cancelAnimationFrame(requestId);
+        };
+      }
+      return;
+    }, [reportFrame]);
+    return { reportFrame, setFPSRef };
+  };
+  var useUplot = (dataBuffer, makePlot2) => {
+    const plot = (0, import_react41.useRef)();
+    const [plotting, setPlotting] = (0, import_react41.useState)(false);
+    const [el, setPlotEl] = (0, import_react41.useState)(null);
+    const start2 = () => {
+      var _a;
+      if (!((_a = plot.current) == null ? void 0 : _a.start))
+        return;
+      plot.current.start();
+      setPlotting(true);
+    };
+    const stop = () => {
+      var _a;
+      setPlotting(false);
+      ((_a = plot.current) == null ? void 0 : _a.stop) && plot.current.stop();
+    };
+    (0, import_react41.useEffect)(() => {
+      if (el) {
+        plot.current = makePlot2(el, dataBuffer);
+        start2();
+        return function cleanup() {
+          var _a;
+          (_a = plot.current) == null ? void 0 : _a.destroy();
+          plot.current = void 0;
+          el.innerHTML = "";
+        };
+      }
+      return;
+    }, [dataBuffer, el]);
+    return { setPlotEl, start: start2, stop, plotting };
+  };
 
   // web/src/app.tsx
   var App = () => {
-    const { api, changeAPIType } = useAPI();
+    const { api, changeAPIType } = useDeviceAPI();
     const [logs, addLogMessage] = useLogs(100);
     const { setFPSRef } = useFPS(true);
     const [activePane, setActivePane] = (0, import_react42.useState)("configure");
@@ -35828,7 +36303,9 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       setFPSRef
     }), /* @__PURE__ */ import_react42.default.createElement(Container_default, {
       fluid: true
-    }, plotNames.map((name) => dataBuffer && /* @__PURE__ */ import_react42.default.createElement(MultiChannelGraph, {
+    }, activePane === "plot" && !dataBuffer && /* @__PURE__ */ import_react42.default.createElement(Header_default, null, /* @__PURE__ */ import_react42.default.createElement(Button_default, {
+      onClick: () => setActivePane("configure")
+    }, "Connect a device first")), plotNames.map((name) => dataBuffer && /* @__PURE__ */ import_react42.default.createElement(MultiChannelGraph, {
       key: name,
       dataBuffer,
       hidden: activePane !== "plot"
@@ -35874,7 +36351,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       style: { height: 300, overflowY: "auto" }
     }, /* @__PURE__ */ import_react42.default.createElement("code", null, /* @__PURE__ */ import_react42.default.createElement("pre", null, logs.map((x2) => `${x2.log_type}: ${x2.log_message}`).join("\n")))), /* @__PURE__ */ import_react42.default.createElement("button", {
       onClick: oneMorePlot
-    }, "Debug: add plot"));
+    }, "add plot (for performance testing)"));
   };
   var Devices = (props) => {
     const {
@@ -35886,8 +36363,6 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       updateDevices,
       apiType
     } = props;
-    const connectedDeviceInfo = connectedDevice === void 0 ? void 0 : devices[connectedDevice];
-    const connectedName = (connectedDeviceInfo == null ? void 0 : connectedDeviceInfo.name) || connectedDevice;
     return /* @__PURE__ */ import_react42.default.createElement(Table_default, {
       celled: true
     }, /* @__PURE__ */ import_react42.default.createElement(Table_default.Header, null, /* @__PURE__ */ import_react42.default.createElement(Table_default.Row, null, /* @__PURE__ */ import_react42.default.createElement(Table_default.HeaderCell, {
@@ -35939,7 +36414,9 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
       style: { height: 120 }
     }, "Discover Twinleaf devices over TIO via WebSerial"), apiType === "WebSerial" ? /* @__PURE__ */ import_react42.default.createElement(Button_default, {
       disabled: true
-    }, "in use") : /* @__PURE__ */ import_react42.default.createElement(Button_default, null, "switch (experimental)")), /* @__PURE__ */ import_react42.default.createElement(Grid_default.Column, {
+    }, "in use") : /* @__PURE__ */ import_react42.default.createElement(Button_default, {
+      disabled: true
+    }, "switch (experimental)")), /* @__PURE__ */ import_react42.default.createElement(Grid_default.Column, {
       textAlign: "center",
       verticalAlign: "top"
     }, /* @__PURE__ */ import_react42.default.createElement(Header_default, {
@@ -35996,7 +36473,8 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   };
   var MultiChannelGraph = ({ dataBuffer, hidden }) => {
     window.plotBuffer = dataBuffer;
-    const { setPlotEl, start: start2, stop, plotting } = useUplot(dataBuffer);
+    const { setPlotEl, start: start2, stop, plotting } = useUplot(dataBuffer, makePlot);
+    const [windowSize, setWindowSize] = (0, import_react42.useState)(dataBuffer.size);
     return /* @__PURE__ */ import_react42.default.createElement("div", {
       hidden
     }, /* @__PURE__ */ import_react42.default.createElement(Button_default, {
@@ -36005,18 +36483,36 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
     }, "Start plotting"), /* @__PURE__ */ import_react42.default.createElement(Button_default, {
       onClick: stop,
       disabled: !plotting
-    }, "Pause plottling"), dataBuffer && /* @__PURE__ */ import_react42.default.createElement(Slider, {
+    }, "Pause plottling"), /* @__PURE__ */ import_react42.default.createElement(Slider, {
       min: 100,
-      max: 1e4,
-      onChange: (n10) => dataBuffer.setWindowSize(n10),
+      max: 4e3,
+      onChange: (n10) => {
+        dataBuffer.setWindowSize(n10);
+        setWindowSize(n10);
+      },
       initial: dataBuffer.size
-    }), /* @__PURE__ */ import_react42.default.createElement("div", {
+    }), windowSize, " samples", /* @__PURE__ */ import_react42.default.createElement("div", {
       ref: setPlotEl
-    }));
+    }), dataBuffer.channelNames.map((name, i10) => /* @__PURE__ */ import_react42.default.createElement(FFTPlot, {
+      key: i10,
+      dataBuffer,
+      i: i10,
+      started: plotting
+    })));
+  };
+  var FFTPlot = ({ dataBuffer, i: i10, started }) => {
+    const { setPlotEl, start: start2, stop } = useUplot(dataBuffer, makeFFTPlot(i10));
+    (0, import_react42.useEffect)(() => {
+      if (started)
+        start2();
+      return stop;
+    }, [started]);
+    return /* @__PURE__ */ import_react42.default.createElement("div", {
+      ref: setPlotEl
+    });
   };
   var Slider = ({ min: min4, max: max3, onChange, initial }) => {
     const _onChange = (e4) => {
-      console.log("running onChange");
       onChange(e4.target.valueAsNumber);
     };
     return /* @__PURE__ */ import_react42.default.createElement("input", {
@@ -36030,12 +36526,6 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   };
 
   // web/main.js
-  var Hello = class extends import_react43.default.Component {
-    render() {
-      return import_react43.default.createElement("div", null, `Hello ${this.props.toWhat}`);
-    }
-  };
-  globalThis.Hello = Hello;
   globalThis.App = App;
   globalThis.React = import_react43.default;
   globalThis.ReactDOM = import_react_dom2.default;

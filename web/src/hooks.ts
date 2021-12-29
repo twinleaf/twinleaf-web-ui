@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import uPlot from "uplot";
 import {
   API,
   APIType,
-  DataDevicePacket,
   DemoAPI,
   DeviceId,
   DeviceInfo,
@@ -12,6 +10,7 @@ import {
   WebSerialAPI,
   WebSocketAPI,
 } from "./api";
+import { DataBuffer, MakePlot } from "./plotting";
 
 const buildApi = (apiType: APIType): API => {
   if (apiType === "Demo") return DemoAPI; // stateless
@@ -21,7 +20,7 @@ const buildApi = (apiType: APIType): API => {
   throw new Error("Unknown API Type " + apiType);
 };
 
-export const useAPI = (
+export const useDeviceAPI = (
   initial?: APIType
 ): { api: API; changeAPIType: (apiType: APIType) => void } => {
   const [apiType, setApiType] = useState<APIType>(() => {
@@ -35,7 +34,7 @@ export const useAPI = (
 };
 
 export type LogEntry = {
-  log_type: string; // TODO
+  log_type: string; // TODO - at least "warn" is allowed
   log_message: string;
 };
 
@@ -44,7 +43,6 @@ export const useLogs = (
 ): [LogEntry[], (msg: LogEntry) => void, () => void] => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const addLogMessage = useCallback((msg: LogEntry) => {
-    // TODO
     setLogs((logs) => {
       if (logs.length >= capacity) {
         return [...logs.slice(1), msg];
@@ -58,74 +56,6 @@ export const useLogs = (
 
   return [logs, addLogMessage, clearLogs];
 };
-
-// always make a new buffer when switching devices
-export class DataBuffer {
-  size: number;
-  data: number[][];
-  sampleNums: number[] = [];
-  positions: number[] = [];
-  deviceName: string;
-  channelNames: string[];
-  sampleReceivedTimes: number[] = [];
-  alreadySeen: WeakSet<any> = new WeakSet();
-  constructor(info: DeviceInfo, size = 1000) {
-    this.deviceName = info.name;
-    this.data = [];
-    this.channelNames = info.channels;
-    for (const _ of this.channelNames) {
-      this.data.push([]);
-    }
-    this.size = size;
-    this.positions = [];
-  }
-  setWindowSize(size: number) {
-    this.size = size;
-    for (let i = 0; i < this.channelNames.length; i++) {
-      this.data[i] = this.data[i].slice(-size);
-    }
-    this.sampleReceivedTimes = this.sampleReceivedTimes.slice(-size);
-    this.sampleNums = this.sampleNums.slice(-size);
-    this.positions = [...Array(this.sampleNums.length).keys()].map(
-      (x) => x - this.sampleNums.length
-    );
-    this.alreadySeen = new WeakSet();
-  }
-  alreadySeenBy(reader: Object): boolean {
-    const seen = this.alreadySeen.has(reader);
-    this.alreadySeen.add(reader);
-    return seen;
-  }
-  addFrame = (frame: DataDevicePacket) => {
-    this.alreadySeen = new WeakSet();
-    for (let i = 0; i < this.channelNames.length; i++) {
-      this.data[i].push(frame.data_floats[i]);
-      if (this.data[i].length > this.size) this.data[i].shift();
-    }
-    this.sampleReceivedTimes.push(performance.now());
-    this.sampleNums.push(frame.sample_number);
-    if (this.sampleNums.length > this.size) {
-      this.sampleNums.shift();
-      this.sampleReceivedTimes.shift();
-    }
-    while (this.positions.length < this.sampleNums.length) {
-      this.positions.unshift((this.positions[0] || 0) - 1);
-    }
-  };
-  // This is a hack for data souces which don't send timestamps
-  // and send data more frequently that the refresh rate.
-  // If all data source send timestamps we can plot more honestly
-  // and stil not drop frames;
-  observedHz = (n = 1000) => {
-    if (!this.sampleReceivedTimes.length) return 0;
-    const lastN = this.sampleReceivedTimes.slice(-(n + 1));
-    const dt = lastN[lastN.length - 1] - lastN[0];
-    // this math is broken for bunched/bundled delivery of packets
-    const fps = ((lastN.length - 1) / dt) * 1000;
-    if (isFinite(fps)) return fps;
-    return 0;
-  };
-}
 
 export const useDevices = (
   api: API,
@@ -151,8 +81,8 @@ export const useDevices = (
     await api.disconnect();
     setConnectedDevice(undefined);
   };
+  // not reentrant
   const connect = async (deviceId: DeviceId) => {
-    // TODO this isn't reentrant, we need another state bit for "busy" to hide the buttons and/or return early
     if (connectedDevice) {
       stopListening.current && stopListening.current();
       await api.disconnect();
@@ -173,7 +103,13 @@ export const useDevices = (
           log_message: packet.log_message,
         });
       } else {
-        throw new Error("received unknown packet type");
+        // the 'as any' cast below is required because TypeScript notices that the
+        // if/else if clauses above already exhaustively match the subtypes of DevicePacket
+        // (which is good!) so this runtime error should only occur if this function
+        // is passed something that isn't a DevicePacket somehow.
+        throw new Error(
+          "received unknown packet type:" + (packet as any).packet_type
+        );
       }
     };
 
@@ -181,18 +117,20 @@ export const useDevices = (
     return;
   };
 
-  // warning: not reentrant!
+  // not reentrant
   const updateDevices = async () => {
     await disconnect();
     setDevices({});
     const deviceIds = await api.enumerateDevices();
     const devices = Object.fromEntries(deviceIds.map((id) => [id, undefined]));
     setDevices(devices);
-    // we could connect+disconnect each devices here to update deviceInfo, but only if
-    // it's safe to connect to arbitrary devices, which may not be Twinleaf devices.
+    // we could connect+disconnect each device here to update deviceInfo, but only if
+    // it is safe to connect to arbitrary devices, which may not be Twinleaf devices.
   };
 
-  // Update the reference in the useEffect closure;
+  // Update the reference in the useEffect closure instead of adding it to the
+  // dependencies array so that it runs only when api changes, and not when the
+  // updateDevices function changes.
   const updateDevicesRef = useRef(updateDevices);
   updateDevicesRef.current = updateDevices;
   useEffect(() => {
@@ -210,7 +148,9 @@ export const useDevices = (
   };
 };
 
-// useRAF means use requestAnimationFrame to guess FPS
+// useRAF means use requestAnimationFrame to guess FPS.
+// This is a useful measure of frames per second if only
+// if real work is being done on every frame.
 export const useFPS = (
   useRAF = false
 ): {
@@ -226,15 +166,16 @@ export const useFPS = (
     renders.current.push(now);
     renders.current = renders.current.filter((t) => t > now - 1000);
 
-    if (performance.now() > lastLog.current + 1000 && elRef.current) {
-      elRef.current.innerHTML = "" + renders.current.length;
+    if (now > lastLog.current + 1000 && elRef.current) {
+      lastLog.current = now;
+      elRef.current.innerHTML = "" + renders.current.length + " FPS";
     }
   }, []);
 
   const setFPSRef = useCallback((el: HTMLElement | null) => {
     elRef.current = el;
     if (el) {
-      el.innerHTML = "" + renders.current.length + " FPS";
+      el.innerHTML = renders.current.length + " FPS";
     }
   }, []);
 
@@ -256,7 +197,10 @@ export const useFPS = (
   return { reportFrame, setFPSRef };
 };
 
-// For debugging, prints which prop changes caused a rerender
+// A debugging utility that prints which objects changed their identity
+// to see e.g. which prop caused a rerender by changing.
+// Function objects (aka closures) changing identity are the most
+// common surprise.
 export const useWhatChanged = (
   props: Record<string, any>,
   label: string = ""
@@ -282,8 +226,8 @@ export const useWhatChanged = (
   prev.current = props;
 };
 
-export const useUplot = (dataBuffer: DataBuffer) => {
-  const plot = useRef<ReturnType<typeof makePlot>>();
+export const useUplot = (dataBuffer: DataBuffer, makePlot: MakePlot) => {
+  const plot = useRef<ReturnType<MakePlot>>();
   const [plotting, setPlotting] = useState(false);
   const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
 
@@ -296,8 +240,6 @@ export const useUplot = (dataBuffer: DataBuffer) => {
     setPlotting(false);
     plot.current?.stop && plot.current.stop();
   };
-
-  useWhatChanged({ dataBuffer, el }, "running create plot useEffect");
   useEffect(() => {
     if (el) {
       plot.current = makePlot(el, dataBuffer);
@@ -312,118 +254,3 @@ export const useUplot = (dataBuffer: DataBuffer) => {
   }, [dataBuffer, el]);
   return { setPlotEl, start, stop, plotting };
 };
-
-/*
- * The plot does not participate in React redraws.
- * Be sure to call destroy when the DOM element disappears.
- */
-export function makePlot(
-  el: HTMLElement,
-  dataBuffer: DataBuffer
-): { plot: uPlot; start: () => void; stop: () => void; destroy: () => void } {
-  function getSize() {
-    // TODO use el.clientWidth in the future + a resizeObserver
-    return {
-      width: window.innerWidth - 40,
-      height: Math.floor((window.innerWidth - 40) / 3),
-    };
-  }
-
-  const scales = {
-    x: {
-      //range: [0, dataBuffer.size] as [number, number],
-      time: false,
-    },
-    y: {
-      auto: false,
-      range: [-1, 1] as [number, number],
-    },
-  };
-
-  const colors = ["red", "green", "blue", "yellow", "orange", "purple"];
-
-  const opts: uPlot.Options = {
-    title: dataBuffer.deviceName,
-    ...getSize(),
-    pxAlign: 0,
-    ms: 1 as const,
-    scales,
-    series: [
-      {},
-      ...dataBuffer.channelNames.map((name, i) => ({
-        stroke: colors[i % colors.length],
-        //        paths: uPlot.paths.points!(),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: false },
-        label: name,
-      })),
-    ],
-  };
-
-  let u = new uPlot(opts, [dataBuffer.positions, ...dataBuffer.data], el);
-
-  function fpsFormat(num: number) {
-    return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
-  }
-
-  let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
-  let lastDataUpdate = 0;
-  function update(t = performance.now()) {
-    const observedHz = dataBuffer.observedHz();
-    let xs = dataBuffer.positions;
-    if (
-      observedHz &&
-      dataBuffer.sampleReceivedTimes.length > 30 &&
-      dataBuffer.alreadySeenBy(u)
-    ) {
-      // do an interpolated update!
-      const delta = (t - lastDataUpdate) / 1000;
-      const expectedDataPoints = observedHz * delta;
-      xs = dataBuffer.positions.map((x) => x - expectedDataPoints);
-    } else {
-      lastDataUpdate = t;
-    }
-
-    const scale = {
-      min: -dataBuffer.size + 1,
-      max: 0,
-    };
-
-    u.setData([xs, ...dataBuffer.data], false);
-    u.setScale("x", scale);
-    (el.querySelector(".u-title")! as HTMLDivElement).innerText =
-      dataBuffer.deviceName +
-      " - receiving at " +
-      fpsFormat(dataBuffer.observedHz()) +
-      " Hz";
-
-    scheduledPlotUpdate = requestAnimationFrame(update);
-  }
-
-  let plotStillExists = true;
-  let scheduledResizeP: Promise<void> | undefined;
-  function onWindowResize() {
-    if (scheduledResizeP) return;
-    scheduledResizeP = new Promise(async (r) => {
-      await new Promise((r) => setTimeout(r, 100));
-      scheduledResizeP = undefined;
-      if (!plotStillExists) return;
-      u.setSize(getSize());
-    });
-  }
-
-  window.addEventListener("resize", onWindowResize);
-
-  function stopUpdating() {
-    cancelAnimationFrame(scheduledPlotUpdate);
-  }
-
-  function destroy() {
-    stopUpdating();
-    window.removeEventListener("resize", onWindowResize);
-    u.destroy();
-  }
-
-  return { plot: u, start: update, stop: stopUpdating, destroy };
-}

@@ -1,5 +1,4 @@
-import React, { useState, MouseEvent, useRef, useEffect } from "react";
-import uPlot from "uplot";
+import React, { useState, MouseEvent, useEffect } from "react";
 import {
   Button,
   Container,
@@ -7,7 +6,6 @@ import {
   Header,
   Icon,
   Image,
-  Input,
   Label,
   Menu,
   MenuItemProps,
@@ -15,21 +13,20 @@ import {
   Table,
 } from "semantic-ui-react";
 import {
-  DataBuffer,
   LogEntry,
-  useAPI,
+  useDeviceAPI,
   useDevices,
   useFPS,
   useLogs,
   useUplot,
-  useWhatChanged,
 } from "./hooks";
+import { DataBuffer, makeFFTPlot, makePlot } from "./plotting";
 import { APIType, DeviceId, DeviceInfo } from "./api";
 
 type ContentPane = "configure" | "plot" | "about";
 
 export const App = () => {
-  const { api, changeAPIType } = useAPI();
+  const { api, changeAPIType } = useDeviceAPI();
   const [logs, addLogMessage] = useLogs(100);
   const { setFPSRef } = useFPS(true);
 
@@ -60,6 +57,13 @@ export const App = () => {
         setFPSRef={setFPSRef}
       />
       <Container fluid>
+        {activePane === "plot" && !dataBuffer && (
+          <Header>
+            <Button onClick={() => setActivePane("configure")}>
+              Connect a device first
+            </Button>
+          </Header>
+        )}
         {plotNames.map(
           (name) =>
             dataBuffer && (
@@ -143,7 +147,7 @@ const ConfigurePane = ({
           </pre>
         </code>
       </div>
-      <button onClick={oneMorePlot}>Debug: add plot</button>
+      <button onClick={oneMorePlot}>add plot (for performance testing)</button>
     </>
   );
 };
@@ -167,10 +171,6 @@ const Devices = (props: DevicesProps) => {
     updateDevices,
     apiType,
   } = props;
-  const connectedDeviceInfo =
-    connectedDevice === undefined ? undefined : devices[connectedDevice];
-  const connectedName = connectedDeviceInfo?.name || connectedDevice;
-
   return (
     <Table celled>
       <Table.Header>
@@ -248,7 +248,7 @@ const Devices = (props: DevicesProps) => {
                       {apiType === "WebSerial" ? (
                         <Button disabled>in use</Button>
                       ) : (
-                        <Button>switch (experimental)</Button>
+                        <Button disabled>switch (experimental)</Button>
                       )}
                     </Grid.Column>
                     <Grid.Column textAlign="center" verticalAlign="top">
@@ -341,7 +341,8 @@ type MultiChannelGraphProps = {
 };
 const MultiChannelGraph = ({ dataBuffer, hidden }: MultiChannelGraphProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-  const { setPlotEl, start, stop, plotting } = useUplot(dataBuffer);
+  const { setPlotEl, start, stop, plotting } = useUplot(dataBuffer, makePlot);
+  const [windowSize, setWindowSize] = useState(dataBuffer.size);
 
   return (
     <div hidden={hidden}>
@@ -351,17 +352,43 @@ const MultiChannelGraph = ({ dataBuffer, hidden }: MultiChannelGraphProps) => {
       <Button onClick={stop} disabled={!plotting}>
         Pause plottling
       </Button>
-      {dataBuffer && (
-        <Slider
-          min={100}
-          max={10000}
-          onChange={(n: number) => dataBuffer.setWindowSize(n)}
-          initial={dataBuffer.size}
-        />
-      )}
+      <Slider
+        min={100}
+        max={4000}
+        onChange={(n: number) => {
+          dataBuffer.setWindowSize(n);
+          setWindowSize(n);
+        }}
+        initial={dataBuffer.size}
+      />
+      {windowSize} samples
       <div ref={setPlotEl} />
+      {dataBuffer.channelNames.map((name, i) => (
+        <FFTPlot
+          key={i}
+          dataBuffer={dataBuffer}
+          i={i}
+          started={plotting}
+        ></FFTPlot>
+      ))}
     </div>
   );
+};
+
+type FFTPlotProps = {
+  dataBuffer: DataBuffer;
+  i: number;
+  started: boolean;
+};
+const FFTPlot = ({ dataBuffer, i, started }: FFTPlotProps) => {
+  const { setPlotEl, start, stop } = useUplot(dataBuffer, makeFFTPlot(i));
+
+  useEffect(() => {
+    if (started) start();
+    return stop;
+  }, [started]);
+
+  return <div ref={setPlotEl}></div>;
 };
 
 type SliderProps = {
@@ -372,7 +399,6 @@ type SliderProps = {
 };
 const Slider = ({ min, max, onChange, initial }: SliderProps) => {
   const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log("running onChange");
     onChange(e.target.valueAsNumber);
   };
   return (
