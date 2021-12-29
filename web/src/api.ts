@@ -74,7 +74,7 @@ export const TauriAPI: API = {
   },
 };
 
-function randn_bm() {
+function randn_bm(): number {
   let u = 0,
     v = 0;
   while (u === 0) u = Math.random(); //Converting [0,1) to (0,1)
@@ -89,19 +89,45 @@ let demoInterval = 100;
 let demoPacketsPerInterval = 10;
 let demoT0 = 0;
 let demoSent = 0;
+let demoOrientationConnected = false;
+let demoOrientationCb: undefined | ((packet: DevicePacket) => void);
+let demoSampleNumber = 0;
+function handleOrientation(e: DeviceOrientationEvent) {
+  if (
+    demoOrientationCb &&
+    e.alpha !== null &&
+    e.beta !== null &&
+    e.gamma !== null
+  ) {
+    demoOrientationCb({
+      packet_type: "data",
+      sample_number: demoSampleNumber++,
+      data_floats: [e.alpha / 360, e.beta / 180, e.gamma / 180],
+    });
+  }
+}
 export const DemoAPI: API = {
   type: "Demo",
   listenToPackets: (cb: (packet: DevicePacket) => void) => {
-    let sampleNumber = 0;
+    demoSampleNumber = 0;
+
+    if (demoOrientationConnected) {
+      demoOrientationCb = cb;
+      return Promise.resolve(function stopListening() {
+        demoOrientationCb = undefined;
+      });
+    }
 
     const sendDataPacket = () =>
       cb({
         packet_type: "data",
-        sample_number: sampleNumber++,
+        sample_number: demoSampleNumber++,
         data_floats: [
           2 * randn_bm() - 1,
-          2 * randn_bm() - 1,
-          2 * randn_bm() - 1,
+          1 * randn_bm() -
+            0.5 +
+            Math.sin(demoSampleNumber / (2 * Math.PI)) * 0.5,
+          Math.sin(demoSampleNumber / (2 * Math.PI) / 3) * 0.3,
         ],
       });
     const sendLogPacket = () =>
@@ -140,12 +166,17 @@ export const DemoAPI: API = {
 
   enumerateDevices: async (): Promise<DeviceId[]> => {
     await new Promise((r) => setTimeout(r, 100));
-    return Promise.resolve(["dummy 10Hz", "dummy 100Hz", "dummy 1000Hz"]);
+    return Promise.resolve([
+      "dummy 10Hz",
+      "dummy 100Hz",
+      "dummy 1000Hz",
+      ...("ontouchstart" in window || window.location.hostname === "localhost"
+        ? ["device orientation (requires mobile device)"]
+        : []),
+    ]);
   },
   connectDevice: async (uri: string): Promise<DeviceInfo> => {
-    if (uri.slice(0, 5) !== "dummy") {
-      throw new Error("Demo API can only connect to dummy data source");
-    }
+    let channels = ["dummy.x", "dummy.y", "dummy.z"];
     if (uri.includes("10Hz")) {
       demoInterval = 500;
       demoPacketsPerInterval = 5;
@@ -155,16 +186,27 @@ export const DemoAPI: API = {
     } else if (uri.includes("1000Hz")) {
       demoInterval = 20;
       demoPacketsPerInterval = 20;
+    } else if (uri.includes("orientation")) {
+      window.addEventListener("deviceorientation", handleOrientation, true);
+      demoOrientationConnected = true;
+      channels = ["alpha", "beta", "gamma"];
+    } else {
+      throw new Error("Demo API can only connect to dummy data source");
     }
+
     demoSent = 0;
     demoT0 = 0;
     await new Promise((r) => setTimeout(r, 100));
+
     return Promise.resolve({
       name: "demo '" + uri + "'",
-      channels: ["gmr.x", "gmr.y", "gmr.z"],
+      channels,
     });
   },
-  disconnect: () => Promise.resolve(),
+  disconnect: () => {
+    window.removeEventListener("deviceorientation", handleOrientation);
+    return Promise.resolve();
+  },
 };
 
 // TODO UNTESTED CODE
