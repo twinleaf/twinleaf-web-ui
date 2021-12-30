@@ -190,6 +190,7 @@ export const DemoAPI: API = {
   },
   disconnect: () => {
     window.removeEventListener("deviceorientation", handleOrientation);
+    demoOrientationConnected = false;
     return Promise.resolve();
   },
 };

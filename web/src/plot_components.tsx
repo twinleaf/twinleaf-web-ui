@@ -47,7 +47,6 @@ export const Plot = (props: PlotProps) => {
   const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
 
   const width = useWidth(el);
-  console.log("got width of", width, "from hook");
   const widthRef = useRef(width);
   widthRef.current = width;
 
@@ -60,9 +59,7 @@ export const Plot = (props: PlotProps) => {
     const optionsWithWidth = { ...options, width: widthRef.current };
     const updatePlotWithWidth = (u: uPlot, db: DataBuffer, el: HTMLElement): void => {
       updatePlot(u, db, el);
-      console.log("considering setting width to", widthRef.current);
       if (widthRef.current != u.width) {
-        console.log("setting width to", widthRef.current);
         u.setSize({ width: widthRef.current, height: u.height });
       }
     };

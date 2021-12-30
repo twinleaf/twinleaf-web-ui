@@ -185,10 +185,6 @@ export class UpdatingUPlot {
     this.plot = new uPlot(opts, [[], []], el);
     this.updateMethod = updateMethod;
     this.onUpdate = onUpdate;
-    console.log(
-      "for the initial update (the unscheduled one that runs before calling start()) got",
-      el.clientWidth
-    );
     this.onUpdate(this.plot, dataBuffer, el);
   }
 
