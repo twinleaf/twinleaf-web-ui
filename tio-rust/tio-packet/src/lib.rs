@@ -1,10 +1,29 @@
-// TODO: needed? #![no_std]
-
-// Reminder: everything in TIO is little endian
-
+/// This crate provides basic helper types (structs and enums) and parsing routines to work with
+/// Twinleaf binary "TIO" packets. This crate tries to use as few dependencies and standard library
+/// features as possible, which would make it possible to use this code in multiple contexts,
+/// including in-browser (WASM) and possibly even directly on microcontrollers.
+///
+/// Code for connecting to serial devices, TCP endpoints, etc, are included in the `tio` crate.
+///
+/// TODO: All the routines in this file currently resurn Result<_, String>, that is, String is used
+/// as the error type. This is a lazy way to get started, but is not idiomatic Rust, where the
+/// error type should implement the standard Error trait (if I remember correctly). This crate
+/// could instead define it's own error type; or try to use generic Error (can't remember if this
+/// is feasible); or possibly use an external library like "anyhow" or "error-chain" to help with
+/// error handling.
+///
+/// TODO: optionally refactor this crate to have most of the code in a separate file, instead of
+/// all in `lib.rs`
+///
+/// TODO: should probably derive serde "Serializable" for all the public structs in this crate.
+// Reminder: everything in TIO binary is little endian
 use std::convert::TryInto;
 
-/// Possible packet types (only partial support; eg does not handle arbitrary stream channels)
+/// Possible packet types, encoded as a single byte (`u8`).
+///
+/// TODO: this is an incomplete mapping, and does not handle the case of multiple numbered streams
+/// (aka, all values above 128). There may be a clever way to handle the above-128 cases with a
+/// Rust enum while retaining the `repr(u8)`..
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketType {
@@ -22,6 +41,7 @@ pub enum PacketType {
 }
 
 impl PacketType {
+    /// This method is required for type safety, to ensure the byte contains a valid packet type.
     pub fn from_u8(raw: u8) -> Result<PacketType, String> {
         use PacketType::*;
         match raw {
@@ -60,7 +80,15 @@ impl RawPacketHeader {
     }
 }
 
-/// Almost-binary representation of packet. Could be used as an intermediary when parsing
+/// Almost-binary representation of packet, to be used as an intermediate value when parsing
+/// packets. Note that the payload is represented as `Vec<u8>`, which means this struct contains a
+/// full copy and requires memory allocation.
+///
+/// A better and more Rust-idiomatic API would avoid creating Vec, and instead either keep a
+/// pointer to a u8 slice, or just not have this intermediate struct exist at all, resulting in a
+/// "zero copy" parse/encode. This may require lifetime annotations and thinking more about
+/// lifetimes/ownerships, which introduces some complexity; the current implementation is easier to
+/// reason about.
 #[derive(Debug, PartialEq)]
 pub struct RawPacket {
     pub packet_type: PacketType,
@@ -84,12 +112,15 @@ impl RawPacket {
             packet_type: header.packet_type,
             routing_len: header.routing_len,
             payload_len: header.payload_len,
-            payload: raw[4..4 + header.payload_len as usize].to_vec(),
-            routing: raw[4 + header.payload_len as usize..].to_vec(),
+            payload: raw[4..(4 + header.payload_len as usize)].to_vec(),
+            routing: raw[(4 + header.payload_len as usize)..].to_vec(),
         })
     }
 
-    /// The append() method mutates the "from", so this needs to consume/destroy the entire struct
+    // The append() method mutates the "from" argument, so this needs to consume/destroy the entire
+    // struct (thus, `mut self` instead of `&self` in the function signature).
+    // TODO: there is probably a more idiomatic way to do this with less copying. It might also be
+    // more idiomatic to pass in the Vec as a buffer (which can be reused)
     pub fn into_bytes(mut self) -> Vec<u8> {
         let mut data: Vec<u8> =
             Vec::with_capacity(4 + self.routing_len as usize + self.payload_len as usize);
@@ -126,6 +157,9 @@ impl LogType {
     }
 }
 
+/// For embedded use, might be better to take a `&str` (references) and work through the lifetime issues.
+/// Also, not sure if using UTF-8 strings pulls in too much unicode handling code for embedded use;
+/// might want to use ASCII and bytestrings instead?
 #[derive(Debug, PartialEq)]
 pub struct LogMessage {
     pub log_data: u32,
@@ -134,6 +168,8 @@ pub struct LogMessage {
 }
 
 impl LogMessage {
+    /// Helper to quickly create a warning-level LogMessage from a String. The entire String is
+    /// passed in (moved), instead of by-reference, because it is subsumed in to the struct.
     pub fn warn(message: String) -> LogMessage {
         // TODO: better sanity check here
         assert!(message.len() < 256);
@@ -163,6 +199,13 @@ impl LogMessage {
     }
 }
 
+// TODO: could refactor the RPC types as:
+//
+//   RPCRequest -> Request
+//   RPCResponse -> Response
+//   RPCError -> ErrorResponse
+/// Fairly low-level representation of an RPC request. Might be better to use Rust enum of either
+/// String or u16 to represent the two options of "method as string" vs. "method as number).
 #[derive(Debug, PartialEq)]
 pub struct RPCRequest {
     pub req_id: u16,
@@ -172,7 +215,7 @@ pub struct RPCRequest {
 }
 
 impl RPCRequest {
-    /// Simple RPC: named by string, no payload
+    /// Hlper to generate a simple string-style RPC request with no payload
     pub fn named_simple(name: String) -> RPCRequest {
         // TODO: more accurate name restriction
         assert!(name.len() < 256);
@@ -201,8 +244,8 @@ pub struct RPCResponse {
     pub payload: Vec<u8>,
 }
 
-/// For stream descriptions, the libtio docs and tio-python implementation diverge, not sure which to follow
 /*
+// NOT IMPLEMENTED: The libtio docs and tio-python implementation diverge, not sure which to follow.
 #[derive(Debug,PartialEq)]
 pub struct StreamDescription{
     // 21 bytes minimum
@@ -238,6 +281,18 @@ impl StreamDescription {
 }
 */
 
+/// Pretty simple low-level representation of StreamData. The API for dealing with streams/channels
+/// may need rethinking. Eg, arguably the context from a StreamDesc is required to decode a stream
+/// message.
+///
+/// TODO: I guess the "as_f32" etc function could be implemented as generics over the type, but in
+/// practice we don't actually seem to use all the possible types, so having different
+/// implementations per type might be fine?
+///
+/// Eg, maybe this crate `tio-packet` should be expanded to have the abstract concept of a
+/// "device", and context about types of channels, and contain helpers for resolving timestamps and
+/// detecting missed packets, things like that. Or that could live in `tio`, but then don't have
+/// access to it in WASM context.
 #[derive(Debug, PartialEq)]
 pub struct StreamData {
     pub sample_num: u32,
@@ -281,6 +336,12 @@ impl StreamData {
     }
 }
 
+/// High(er) level representation of any packet. The idea is that most application code would use
+/// this abstraction level.
+///
+/// TODO: the simple helper methods of individual types (like "warn()" for a log packet, or "simple
+/// RPC") could be moved to this type; would make constructing high-level structs easier in calling
+/// code.
 #[derive(Debug, PartialEq)]
 pub enum Packet {
     Empty,
@@ -319,8 +380,13 @@ impl Packet {
         };
         Ok(raw_packet.into_bytes())
     }
+
+    // TODO: high-level "from_bytes()"
 }
 
+// TODO: more low-level (unittest) coverage. Any way to make basic protocol/schema test coverage
+// more tranferable between language implementations is good. Eg, a set of test vectors that can be
+// reused between Rust, C, and Python implementations.
 #[cfg(test)]
 mod tests {
     use super::*;
