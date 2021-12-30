@@ -5,8 +5,8 @@
 use std::convert::TryInto;
 
 /// Possible packet types (only partial support; eg does not handle arbitrary stream channels)
-#[derive(Debug, PartialEq)]
 #[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketType {
     Invalid = 0,
     Log = 1,
@@ -102,8 +102,8 @@ impl RawPacket {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
 #[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LogType {
     Critical = 0,
     Error = 1,
