@@ -14,7 +14,9 @@ use tio_packet::{
 };
 
 /// Represents metadata about a device that would be returned by StreamDesc and/or other RPC calls
-/// at device initialization time
+/// at device initialization time.
+///
+/// TODO: should this live in `tio-packet`?
 #[derive(Debug, Serialize, Clone)]
 pub struct DeviceInfo {
     pub name: String,
@@ -22,10 +24,15 @@ pub struct DeviceInfo {
     // TODO: channel data types? rate? etc
     // TODO: firmware version?
     // TODO: hw version?
-    // TODO: serial number?
+    // TODO: hw serial number?
 }
 
 impl DeviceInfo {
+    /// This is a hack to generate mock info for a vector magnetometer device.
+    ///
+    /// TODO: not even sure these channel names/mappings are correct. method name should be
+    /// different, and/or probably shouldn't live as a method on the DeviceInfo struct. Could be
+    /// part of the dummy device creation code?
     pub fn new_vmr(name: String) -> DeviceInfo {
         DeviceInfo {
             name,
@@ -44,6 +51,35 @@ impl DeviceInfo {
     }
 }
 
+/// Handle containing context about an active connection to a device. The connection type is
+/// abstracted away. Actual device communication happens in threads, with communication via
+/// channels. When this struct is "dropped" (that is, removed from memory and deconstructed), the
+/// channels and thus threads should shut down automatically, but this hasn't been tested.
+///
+/// The initialization process involves some communication with the device, to put it in binary
+/// mode, and potentially to read out the stream descriptions and other device info (eg, firmware
+/// version).
+///
+/// Most of the backends have a common structure: an I/O thread handles reading and writing TIO
+/// packets, and communicates back bi-directionally via channels. The crossbeam channel
+/// implementation (a dependecy) is used, which is a robust and popular alternative to the standard
+/// library "mpsc" channel implmentation, which has some quirks (there has been discussion of
+/// adding the crossbeam channel implementation to the rust standard library). The semantics are
+/// similar to golang channels, and not too different from Python Queues for concurrency control.
+/// Channels have types, can be bounded or unbounded, and reading/writing can be synchronous
+/// (blocking) or asynchronous. Generally, the I/O thread does reads from backend file descriptors
+/// (sockets or serial port file) with a timeout; blocking writes; and polls the "tx" (write to
+/// device) channel asynchronously. For future robustness, bounded channels should be used to
+/// prevent messages from piling up (memory leak), and efforts should be made to handle situations
+/// like device disconnects (I/O thread should shut down, dropping the "rx" channel, which results
+/// in an error when reading for new packets; currently applications would have to handle this
+/// themselves).
+///
+/// One possible change/improvement to this API would be to have two "rx" channels: one for
+/// stream/broadcast messages (like stream data or log messages), and one for synchronous messages
+/// (like RPC responses and RPC errors). This would make application logic of doing RPCs easier:
+/// just write a message, then poll for a result, while other message types spool up in the stream
+/// "rx" channel.
 #[derive(Debug)]
 pub struct Device {
     pub uri: String,
@@ -99,6 +135,10 @@ impl Device {
         devices
     }
 
+    /// Generic method to connect to a device, supporting multiple connection types/schemes.
+    ///
+    /// Once established, I/O happens in threads, but the initial connection is usually blocking in
+    /// the current thread.
     pub fn connect(uri: String) -> Result<Device> {
         if uri.starts_with("serial://") {
             Device::connect_serial(uri)
@@ -190,6 +230,7 @@ impl Device {
         })
     }
 
+    /// Opening the serial port file is blocking in current thread (but expected to be immediate?)
     fn connect_serial(uri: String) -> Result<Device> {
         let path = (&uri)[9..].to_string();
         println!("connecting to: {}", path);
@@ -210,9 +251,17 @@ impl Device {
         let (rx_sender, rx_receiver) = channel::bounded(0);
         thread::spawn(move || {
             // first read until END to clear any previous buffer stuff
-            // NOTE: this BufReader trick works in development, but means the port is no longer
-            // writable. There might be away around this, but won't work long-term for this
-            // application (when we need to read and write from this thread)
+            //
+            // NOTE: this BufReader trick (wrapping the port, which implements Read, with BufRead)
+            // works in development, but means the port is no longer writable. There might be away
+            // around this, but won't work long-term for this application (when we need to read and
+            // write from this thread)
+            // I have run in to this situation before, and have a vague suspicion that there is a
+            // better/idiomatic way to have a bi-directional (Read+Write) object which can also be
+            // wrapped with BufRead, but I can't remember off the top of my head. The main reason
+            // here for BufRead is to get the `read_until()` function, but it is also preferable to
+            // do BufRead for performance reasons (fewer syscalls), even if the kernel is
+            // implementing buffering itself..
             let mut buf_port = BufReader::new(port);
             let mut slip_buf: Vec<u8> = Vec::with_capacity(1024);
 
@@ -252,6 +301,8 @@ impl Device {
                             StreamZero => {
                                 Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
                             }
+                            // TODO: should we bother returning heartbeat messages? just drop them
+                            // here?
                             Heartbeat => Packet::Empty,
                             // TODO: actually parse/handle these
                             Timebase | Source | Text | RPCResponse | Invalid | RPCRequest
@@ -283,6 +334,11 @@ impl Device {
         })
     }
 
+    /// Mock endpoint that tries to look like a VMR device.
+    ///
+    /// TODO: could include extra metadata in the connection string to control which kind of device
+    /// is mocked (eg, `dummy://omg` for OMG device), and potentially even have a full mocked
+    /// device that responds to RPC requests and can change sample rate, things like that.
     fn connect_dummy() -> Result<Device> {
         // log: "starting dummy data loop"
         let (tx_sender, tx_receiver) = channel::bounded(0);
@@ -296,7 +352,8 @@ impl Device {
         })
     }
 
-    /// This "dummy data" event loop runs at 25 Hz and pushes  random data to the app
+    // No particular reason this event loop is in a separate function while the others are not, I
+    // just implemented this one a little differently
     fn loop_dummy(rx_sender: channel::Sender<Packet>, done_receiver: channel::Receiver<Packet>) {
         let mut time_sec = 0f64;
         let mut count = 0u32;

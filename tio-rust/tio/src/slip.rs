@@ -3,8 +3,12 @@ SLIP protocol module
 
 Thomas Kornack
 Twinleaf LLC 2016
+
+NOTE: this implementation was mostly copy/paste from old code. Did run `cargo fmt.
 */
 
+// TODO: this would be a good example of a place to define a specific Error (or multiple) for SLIP
+// framing/encoding "Error" types.
 use anyhow::{anyhow, Result};
 use std::convert::TryInto;
 
@@ -44,6 +48,11 @@ pub fn tio_slip_decode(rx_slip: &[u8]) -> Result<Vec<u8>> {
                         rx_buf.pop();
                         rx_buf.pop();
                         rx_buf.pop();
+
+                        // TODO: I actually don't recommend this crc32fast library, it seems too
+                        // complicated (uses SIMD, probably actually a performance regression for
+                        // these small packets). I tried using another crate ("crc"?), but it had
+                        // too many options and I couldn't get any serial packets to validate.
                         if rx_crc == crc32fast::hash(&rx_buf) {
                             return Ok(rx_buf);
                         } else {
@@ -108,6 +117,7 @@ pub fn tio_slip_encode(msg: &[u8]) -> Vec<u8> {
 mod test {
     use super::*;
 
+    // TODO: more tests... this is such a good/easy thing to write tests for!
     #[test]
     fn encode_decode() {
         // Cover all codes

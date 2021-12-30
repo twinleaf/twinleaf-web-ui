@@ -7,6 +7,18 @@ use structopt::StructOpt;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use tio::Device;
 
+/// Pretty simple/small CLI implementation. I copied this from another CLI tool I wrote, and as a
+/// result it is a bit over-engineered and pulls in a bunch of dependencies which aren't really
+/// needed, like fancy argument parsing (structopt) and terminal color. These are fun but increase
+/// binary size for the CLI, and build times even if the CLI isn't used (eg, when `tio` is compiled
+/// in to Tauri app as a library). Could work around this by making the CLI a separate crate (in
+/// the same "workspace"); have the CLI features be controlled by a config flag; making the CLI an
+/// "example" not a binary; maybe something else.
+///
+/// Do recommend keeping at least 'anyhow' for error processing in the CLI.
+
+// I love the API of the structopt crate. It does unfortunately pull in the 'clap' crate, which is
+// fairly large.
 #[derive(StructOpt)]
 #[structopt(
     rename_all = "kebab-case",
@@ -28,6 +40,8 @@ enum Command {
 fn main() -> Result<()> {
     let opt = Opt::from_args();
 
+    // env_logger is the most common simple rust logging crate. You can control log verbosity by
+    // setting an environment variable on the command line.
     env_logger::from_env(env_logger::Env::default()).init();
     debug!("Args parsed, starting up");
 
@@ -41,6 +55,8 @@ fn main() -> Result<()> {
                 std::process::exit(0);
             }
         }
+
+        // gratuitous terminal color handling, for pretty-printing errors
         let mut color_stderr = StandardStream::stderr(if atty::is(atty::Stream::Stderr) {
             ColorChoice::Auto
         } else {
@@ -61,6 +77,8 @@ fn run(opt: Opt) -> Result<()> {
             // prints to stdout
             Device::enumerate_devices();
         }
+        // "car-raw" was used when developing to just dump CSV-style data rows to stdout from
+        // serial ports (it does not try to parse binary packets)
         Command::CatRaw { uri } => {
             let mut port = serialport::new(uri, 115_200)
                 .timeout(Duration::from_millis(20))
