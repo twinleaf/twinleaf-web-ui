@@ -222,16 +222,6 @@ export class UpdatingUPlot {
     this.scheduledPlotUpdate = undefined;
   };
 
-  // called on window resize, may be called by React on layout change in the future
-  updateSize = () => {
-    this.plot.setSize({
-      // TODO this should fill containing div (which should by styled to width 100% or similar)
-      // instead of being a function of window size alone.
-      width: window.innerWidth - 40,
-      height: Math.floor((window.innerWidth - 40) / 3),
-    });
-  };
-
   destroy = () => {
     this.stop();
     this.plot.destroy();

@@ -120,7 +120,7 @@ export const DemoAPI: API = {
         log_message: "This is a log message",
       });
 
-    const sendAndSchedule = () => {
+    const send = () => {
       sendLogPacket();
       const now = performance.now();
       if (demoT0 === 0) demoT0 = now;
@@ -142,7 +142,7 @@ export const DemoAPI: API = {
       clearInterval(timer);
     };
 
-    const timer = setInterval(sendAndSchedule, demoInterval);
+    const timer = setInterval(send, demoInterval);
     return Promise.resolve(stopListening);
   },
 
