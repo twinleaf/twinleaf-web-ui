@@ -23,6 +23,8 @@ export class DataBuffer {
   channelNames: string[];
   sampleReceivedTimes: number[] = [];
   alreadySeen: WeakSet<any> = new WeakSet();
+  scheduledPlotUpdate: number;
+
   constructor(info: DeviceInfo, size = 1000) {
     this.deviceName = info.name;
     this.data = [];
@@ -33,6 +35,9 @@ export class DataBuffer {
     this.size = size;
     this.positions = [];
   }
+  // For interactively setting the window size.
+  // Not necessary if we decide on a correct window size
+  // when the DataBuffer is constructed.
   setWindowSize(size: number) {
     this.size = size;
     for (let i = 0; i < this.channelNames.length; i++) {
@@ -45,11 +50,14 @@ export class DataBuffer {
     );
     this.alreadySeen = new WeakSet();
   }
+  // Has the side effect of marking the reader as alreadySeen,
+  // where it will stay until new data is received.
   alreadySeenBy(reader: Object): boolean {
     const seen = this.alreadySeen.has(reader);
     this.alreadySeen.add(reader);
     return seen;
   }
+  // Should be called for every data packet delivered
   addFrame = (frame: DataDevicePacket) => {
     this.alreadySeen = new WeakSet();
     for (let i = 0; i < this.channelNames.length; i++) {
@@ -68,10 +76,10 @@ export class DataBuffer {
   };
 
   /*
-   * This is a hack for data souces which don't send timestamps
+   * This a hack for data souces which don't send timestamps
    * and send data more frequently that the refresh rate.
-   * If all data source send timestamps we can plot more honestly
-   * and stil not drop frames;
+   * If all data source send timestamps we don't need this,
+   * we can plot more honestly and stil not drop frames.
    */
   observedHz = (n = 1000) => {
     if (!this.sampleReceivedTimes.length) return 0;
@@ -84,10 +92,39 @@ export class DataBuffer {
   };
 
   /*
+   * Returns x values (in units of sample number) for plotting.
+   * Return value may be a reference to the data member of this class,
+   * so don't modify the data in it.
+   * If timeShift is true, interpolate requests for data by shifting
+   * Xs to later based on the observed data ingestion rate
+   * and the time delta since the last data update.
+   */
+  getXs = (timeShift = true): number[] => {
+    if (!timeShift) return this.positions;
+    const now = performance.now();
+    const observedHz = this.observedHz();
+    const lastDataUpdate =
+      this.sampleReceivedTimes[this.sampleReceivedTimes.length - 1];
+    if (
+      timeShift &&
+      lastDataUpdate &&
+      observedHz &&
+      this.sampleReceivedTimes.length > 30 //
+    ) {
+      // if the plot has seen this data already and we can
+      // do an interpolated update (aka animation)
+      const delta = (now - lastDataUpdate) / 1000;
+      const expectedDataPoints = observedHz * delta;
+      return this.positions.map((x) => x - expectedDataPoints);
+    }
+    return this.positions;
+  };
+
+  /*
    * Real signal processing will probably happen on the device,
    * but to get us started here's a power spectrum.
    */
-  fft = (
+  spectrum = (
     channel: number,
     n = 4096
   ): { amplitudes: number[]; freqs: number[] } => {
@@ -130,183 +167,100 @@ function getSize() {
   };
 }
 
-function fpsFormat(num: number) {
+export function fpsFormat(num: number) {
   return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
 }
 
-// Given a DOM element, stick a stateful uPlot in it and return controls for it
-export type MakePlot = (
-  el: HTMLElement,
-  db: DataBuffer
-) => {
+export type PlotUpdateMethod =
+  | { method: "animationFrame" }
+  | { method: "interval"; interval: 200 };
+
+export class UpdatingUPlot {
+  readonly el: HTMLElement;
+  readonly dataBuffer: DataBuffer;
+  readonly updateMethod: PlotUpdateMethod;
+  readonly onUpdate: (
+    plot: uPlot,
+    dataBuffer: DataBuffer,
+    el: HTMLElement
+  ) => void;
+
+  // internal state
   plot: uPlot;
-  start: () => void;
-  stop: () => void;
-  destroy: () => void;
-};
-export const makePlot: MakePlot = (el: HTMLElement, dataBuffer: DataBuffer) => {
-  const scales = {
-    x: {
-      //range: [0, dataBuffer.size] as [number, number],
-      time: false,
-    },
-    y: {
-      auto: false,
-      range: [-1, 1] as [number, number],
-    },
-  };
+  scheduledPlotUpdate: number | undefined;
+  destroyed = false;
+  scheduledResizeP: Promise<void> | undefined;
 
-  const colors = ["red", "green", "blue", "yellow", "orange", "purple"];
-
-  const opts: uPlot.Options = {
-    title: dataBuffer.deviceName,
-    ...getSize(),
-    pxAlign: 0,
-    ms: 1 as const,
-    scales,
-    series: [
-      {},
-      ...dataBuffer.channelNames.map((name, i) => ({
-        stroke: colors[i % colors.length],
-        //        paths: uPlot.paths.points!(),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: false },
-        label: name,
-      })),
-    ],
-  };
-
-  const u = new uPlot(opts, [dataBuffer.positions, ...dataBuffer.data], el);
-
-  let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
-  let lastDataUpdate = 0;
-  function update(t = performance.now()) {
-    const observedHz = dataBuffer.observedHz();
-    let xs = dataBuffer.positions;
-    if (
-      observedHz &&
-      dataBuffer.sampleReceivedTimes.length > 30 &&
-      dataBuffer.alreadySeenBy(u)
-    ) {
-      // if the plot has seen this data already and we can,
-      // do an interpolated update (aka animation)
-      const delta = (t - lastDataUpdate) / 1000;
-      const expectedDataPoints = observedHz * delta;
-      xs = dataBuffer.positions.map((x) => x - expectedDataPoints);
-    } else {
-      lastDataUpdate = t;
-    }
-
-    const scale = {
-      min: -dataBuffer.size + 1,
-      max: 0,
-    };
-
-    u.setData([xs, ...dataBuffer.data], false);
-    u.setScale("x", scale);
-    (el.querySelector(".u-title")! as HTMLDivElement).innerText =
-      dataBuffer.deviceName +
-      " - receiving at " +
-      fpsFormat(dataBuffer.observedHz()) +
-      " Hz";
-
-    scheduledPlotUpdate = requestAnimationFrame(update);
+  constructor(
+    el: HTMLElement,
+    dataBuffer: DataBuffer,
+    updateMethod: PlotUpdateMethod,
+    opts: uPlot.Options,
+    onUpdate: (u: uPlot, db: DataBuffer, el: HTMLElement) => void
+  ) {
+    this.el = el;
+    this.dataBuffer = dataBuffer;
+    this.plot = new uPlot(opts, [dataBuffer.positions, ...dataBuffer.data], el);
+    this.updateMethod = updateMethod;
+    this.onUpdate = onUpdate;
   }
 
-  let plotStillExists = true;
-  let scheduledResizeP: Promise<void> | undefined;
-  function onWindowResize() {
-    if (scheduledResizeP) return;
-    scheduledResizeP = new Promise(async (r) => {
+  start = () => {
+    if (this.scheduledPlotUpdate) {
+      console.error("Called start on already running plot!");
+      return;
+    }
+    if (this.updateMethod.method === "animationFrame") {
+      const onAnimationFrame = () => {
+        this.onUpdate(this.plot, this.dataBuffer, this.el);
+        this.scheduledPlotUpdate = requestAnimationFrame(onAnimationFrame);
+      };
+      onAnimationFrame();
+    } else if (this.updateMethod.method === "interval") {
+      // casting the return value of setInterval to a number is fine,
+      // in every major browser it returns a non-zero integer.
+      this.scheduledPlotUpdate = setInterval(
+        () => this.onUpdate(this.plot, this.dataBuffer, this.el),
+        this.updateMethod.interval
+      ) as unknown as number;
+    }
+  };
+  stop = () => {
+    if (!this.scheduledPlotUpdate) {
+      console.error("called stop on already stopped plot!");
+      return;
+    }
+    if (this.updateMethod.method === "animationFrame") {
+      cancelAnimationFrame(this.scheduledPlotUpdate);
+    } else if (this.updateMethod.method === "interval") {
+      clearInterval(this.scheduledPlotUpdate);
+    }
+    this.scheduledPlotUpdate = undefined;
+  };
+
+  onWindowResize = () => {
+    if (this.scheduledResizeP) return;
+    this.scheduledResizeP = new Promise(async (r) => {
       await new Promise((r) => setTimeout(r, 100));
-      scheduledResizeP = undefined;
-      if (!plotStillExists) return;
-      u.setSize(getSize());
+      this.scheduledResizeP = undefined;
+      if (this.destroyed) return;
+      this.updateSize();
     });
-  }
-
-  window.addEventListener("resize", onWindowResize);
-
-  function stopUpdating() {
-    cancelAnimationFrame(scheduledPlotUpdate);
-  }
-
-  function destroy() {
-    stopUpdating();
-    window.removeEventListener("resize", onWindowResize);
-    u.destroy();
-  }
-
-  return { plot: u, start: update, stop: stopUpdating, destroy };
-};
-
-// This is a function that returns a function
-export const makeFFTPlot =
-  (channelIndex: number): MakePlot =>
-  (el: HTMLElement, dataBuffer: DataBuffer) => {
-    const u = new uPlot(
-      {
-        width: window.innerWidth - 40,
-        height: 160,
-        pxAlign: 0,
-        axes: [{ show: true }],
-        ms: 1 as const,
-        scales: { x: { time: false } },
-        legend: { show: false },
-        series: [
-          {},
-          {
-            stroke: "black",
-            spanGaps: true,
-            pxAlign: 0,
-            points: { show: false },
-          },
-        ],
-      },
-      [dataBuffer.positions, ...dataBuffer.data],
-      el
-    );
-
-    let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
-    function update() {
-      const observedHz = dataBuffer.observedHz();
-      if (dataBuffer.alreadySeenBy(u) || !observedHz) {
-        scheduledPlotUpdate = requestAnimationFrame(update);
-        return;
-      }
-
-      const { amplitudes, freqs } = dataBuffer.fft(channelIndex);
-      u.setData([freqs, amplitudes], false);
-      u.setScale("x", {
-        min: 0,
-        max: freqs[freqs.length - 1],
-      });
-
-      scheduledPlotUpdate = requestAnimationFrame(update);
-    }
-    let plotStillExists = true;
-    let scheduledResizeP: Promise<void> | undefined;
-    function onWindowResize() {
-      if (scheduledResizeP) return;
-      scheduledResizeP = new Promise(async (r) => {
-        await new Promise((r) => setTimeout(r, 100));
-        scheduledResizeP = undefined;
-        if (!plotStillExists) return;
-        u.setSize({ width: window.innerWidth - 40, height: 160 });
-      });
-    }
-    window.addEventListener("resize", onWindowResize);
-
-    function stopUpdating() {
-      cancelAnimationFrame(scheduledPlotUpdate);
-    }
-
-    function destroy() {
-      stopUpdating();
-      window.removeEventListener("resize", onWindowResize);
-      u.destroy();
-    }
-
-    return { plot: u, start: update, stop: stopUpdating, destroy };
   };
+
+  // called on window resize, may be called by React on layout change in the future
+  updateSize = () => {
+    this.plot.setSize({
+      // TODO this should fill containing div (which should by styled to width 100% or similar)
+      // instead of being a function of window size alone.
+      width: window.innerWidth - 40,
+      height: Math.floor((window.innerWidth - 40) / 3),
+    });
+  };
+
+  destroy = () => {
+    this.stop();
+    window.removeEventListener("resize", this.onWindowResize);
+    this.plot.destroy();
+  };
+}

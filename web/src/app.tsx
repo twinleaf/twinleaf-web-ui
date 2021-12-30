@@ -12,16 +12,14 @@ import {
   Popup,
   Table,
 } from "semantic-ui-react";
-import {
-  LogEntry,
-  useDeviceAPI,
-  useDevices,
-  useFPS,
-  useLogs,
-  useUplot,
-} from "./hooks";
-import { DataBuffer, makeFFTPlot, makePlot } from "./plotting";
+import { LogEntry, useDeviceAPI, useDevices, useFPS, useLogs } from "./hooks";
+import { DataBuffer } from "./plotting";
 import { APIType, DeviceId, DeviceInfo } from "./api";
+import {
+  CombinedSpectrumPlot,
+  SpectrumPlot,
+  TracePlot,
+} from "./plot_components";
 
 type ContentPane = "configure" | "plot" | "about";
 
@@ -341,15 +339,17 @@ type MultiChannelGraphProps = {
 };
 const MultiChannelGraph = ({ dataBuffer, hidden }: MultiChannelGraphProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-  const { setPlotEl, start, stop, plotting } = useUplot(dataBuffer, makePlot);
   const [windowSize, setWindowSize] = useState(dataBuffer.size);
+  const [paused, setPaused] = useState(false);
+
+  const colors = ["red", "green", "blue"];
 
   return (
     <div hidden={hidden}>
-      <Button onClick={start} disabled={plotting}>
+      <Button onClick={() => setPaused(false)} disabled={!paused}>
         Start plotting
       </Button>
-      <Button onClick={stop} disabled={!plotting}>
+      <Button onClick={() => setPaused(true)} disabled={paused}>
         Pause plottling
       </Button>
       <Slider
@@ -362,33 +362,19 @@ const MultiChannelGraph = ({ dataBuffer, hidden }: MultiChannelGraphProps) => {
         initial={dataBuffer.size}
       />
       {windowSize} samples
-      <div ref={setPlotEl} />
       {dataBuffer.channelNames.map((name, i) => (
-        <FFTPlot
+        <TracePlot
           key={i}
+          color={colors[i % colors.length]}
+          channelIndex={i}
           dataBuffer={dataBuffer}
-          i={i}
-          started={plotting}
-        ></FFTPlot>
+          showTitle={i === 0}
+          paused={paused}
+        />
       ))}
+      {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} />}
     </div>
   );
-};
-
-type FFTPlotProps = {
-  dataBuffer: DataBuffer;
-  i: number;
-  started: boolean;
-};
-const FFTPlot = ({ dataBuffer, i, started }: FFTPlotProps) => {
-  const { setPlotEl, start, stop } = useUplot(dataBuffer, makeFFTPlot(i));
-
-  useEffect(() => {
-    if (started) start();
-    return stop;
-  }, [started]);
-
-  return <div ref={setPlotEl}></div>;
 };
 
 type SliderProps = {

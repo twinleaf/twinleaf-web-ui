@@ -10,7 +10,7 @@ import {
   WebSerialAPI,
   WebSocketAPI,
 } from "./api";
-import { DataBuffer, MakePlot } from "./plotting";
+import { DataBuffer } from "./plotting";
 
 const buildApi = (apiType: APIType): API => {
   if (apiType === "Demo") return DemoAPI; // stateless
@@ -224,33 +224,4 @@ export const useWhatChanged = (
   }
 
   prev.current = props;
-};
-
-export const useUplot = (dataBuffer: DataBuffer, makePlot: MakePlot) => {
-  const plot = useRef<ReturnType<MakePlot>>();
-  const [plotting, setPlotting] = useState(false);
-  const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
-
-  const start = () => {
-    if (!plot.current?.start) return;
-    plot.current.start();
-    setPlotting(true);
-  };
-  const stop = () => {
-    setPlotting(false);
-    plot.current?.stop && plot.current.stop();
-  };
-  useEffect(() => {
-    if (el) {
-      plot.current = makePlot(el, dataBuffer);
-      start();
-      return function cleanup() {
-        plot.current?.destroy();
-        plot.current = undefined;
-        el.innerHTML = "";
-      };
-    }
-    return;
-  }, [dataBuffer, el]);
-  return { setPlotEl, start, stop, plotting };
 };
