@@ -3,8 +3,8 @@ import uPlot from "uplot";
 import { DataDevicePacket, DeviceInfo } from "./api";
 
 /*
- * DataBuffer maintains a "circular buffer" (maybe, naively it's O(n) to add elements
- * but JavaScript runtimes optimize this) of each channel of input.
+ * DataBuffer maintains a "circular buffer" (maybe, naively it's O(n) to add
+ * elements but JavaScript runtimes optimize this) of each channel of input.
  * It also
  * - keeps track of whether it is dirty wrt a given reader
  * - records when frames of data were received to estimate data rate in Hz
@@ -29,9 +29,9 @@ export class DataBuffer {
     this.deviceName = info.name;
     this.data = [];
     this.channelNames = info.channels;
-    for (const _ of this.channelNames) {
+    this.channelNames.forEach(() => {
       this.data.push([]);
-    }
+    });
     this.size = size;
     this.positions = [];
   }
@@ -52,7 +52,8 @@ export class DataBuffer {
   }
   // Has the side effect of marking the reader as alreadySeen,
   // where it will stay until new data is received.
-  alreadySeenBy(reader: Object): boolean {
+  // ready must be an Object (typeof reader === 'object')
+  alreadySeenBy(reader: any): boolean {
     const seen = this.alreadySeen.has(reader);
     this.alreadySeen.add(reader);
     return seen;
@@ -103,8 +104,7 @@ export class DataBuffer {
     if (!timeShift) return this.positions;
     const now = performance.now();
     const observedHz = this.observedHz();
-    const lastDataUpdate =
-      this.sampleReceivedTimes[this.sampleReceivedTimes.length - 1];
+    const lastDataUpdate = this.sampleReceivedTimes[this.sampleReceivedTimes.length - 1];
     if (
       timeShift &&
       lastDataUpdate &&
@@ -124,10 +124,7 @@ export class DataBuffer {
    * Real signal processing will probably happen on the device,
    * but to get us started here's a power spectrum.
    */
-  spectrum = (
-    channel: number,
-    n = 4096
-  ): { amplitudes: number[]; freqs: number[] } => {
+  spectrum = (channel: number, n = 4096): { amplitudes: number[]; freqs: number[] } => {
     const d = this.data[channel];
     const size = 2 ** Math.floor(Math.log2(Math.min(d.length, n)));
     const hz = this.observedHz();
@@ -151,19 +148,10 @@ export class DataBuffer {
       amplitudes.push(Math.sqrt(re * re + im * im));
       freqs.push((i * hz) / size);
     }
-    return { freqs, amplitudes };
-  };
-}
+    // very naive way to make DC go away
+    amplitudes[0] = 0;
 
-function getSize() {
-  // TODO - use size of the container instead of window
-  // Currently size is hardcoded to match the window, which won't
-  // work for layouts that don't display plots at full width.
-  // Instead, this should grow to fill the space of its container
-  // using el.clientWidth + a ResizeObserver.
-  return {
-    width: window.innerWidth - 40,
-    height: Math.floor((window.innerWidth - 40) / 3),
+    return { freqs, amplitudes };
   };
 }
 
@@ -171,19 +159,13 @@ export function fpsFormat(num: number) {
   return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
 }
 
-export type PlotUpdateMethod =
-  | { method: "animationFrame" }
-  | { method: "interval"; interval: 200 };
+export type PlotUpdateMethod = { method: "animationFrame" } | { method: "interval"; interval: 200 };
 
 export class UpdatingUPlot {
   readonly el: HTMLElement;
   readonly dataBuffer: DataBuffer;
   readonly updateMethod: PlotUpdateMethod;
-  readonly onUpdate: (
-    plot: uPlot,
-    dataBuffer: DataBuffer,
-    el: HTMLElement
-  ) => void;
+  readonly onUpdate: (plot: uPlot, dataBuffer: DataBuffer, el: HTMLElement) => void;
 
   // internal state
   plot: uPlot;
@@ -200,9 +182,14 @@ export class UpdatingUPlot {
   ) {
     this.el = el;
     this.dataBuffer = dataBuffer;
-    this.plot = new uPlot(opts, [dataBuffer.positions, ...dataBuffer.data], el);
+    this.plot = new uPlot(opts, [[], []], el);
     this.updateMethod = updateMethod;
     this.onUpdate = onUpdate;
+    console.log(
+      "for the initial update (the unscheduled one that runs before calling start()) got",
+      el.clientWidth
+    );
+    this.onUpdate(this.plot, dataBuffer, el);
   }
 
   start = () => {
@@ -210,6 +197,7 @@ export class UpdatingUPlot {
       console.error("Called start on already running plot!");
       return;
     }
+
     if (this.updateMethod.method === "animationFrame") {
       const onAnimationFrame = () => {
         this.onUpdate(this.plot, this.dataBuffer, this.el);
@@ -238,16 +226,6 @@ export class UpdatingUPlot {
     this.scheduledPlotUpdate = undefined;
   };
 
-  onWindowResize = () => {
-    if (this.scheduledResizeP) return;
-    this.scheduledResizeP = new Promise(async (r) => {
-      await new Promise((r) => setTimeout(r, 100));
-      this.scheduledResizeP = undefined;
-      if (this.destroyed) return;
-      this.updateSize();
-    });
-  };
-
   // called on window resize, may be called by React on layout change in the future
   updateSize = () => {
     this.plot.setSize({
@@ -260,7 +238,6 @@ export class UpdatingUPlot {
 
   destroy = () => {
     this.stop();
-    window.removeEventListener("resize", this.onWindowResize);
     this.plot.destroy();
   };
 }
