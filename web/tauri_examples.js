@@ -27,6 +27,6 @@ invoke('enumerate_devices').then((devices) => console.log(devices))
 // "dummy" is a special device that will send bogus data
 // Currently this doesn't really return anything, but the intention is to have
 // it return an object which has metadata about the device
-invoke('connect_device', { uri: "dummy" }).then((resp) => console.log(resp))
+invoke('connect_device', { uri: "dummy://" }).then((resp) => console.log(resp))
 
 //invoke('disconnect').then((resp) => console.log(resp))

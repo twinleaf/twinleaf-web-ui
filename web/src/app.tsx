@@ -1,319 +1,320 @@
-import React, {
-  useState,
-  MouseEvent,
-  useRef,
-  useCallback,
-  useEffect,
-} from "react";
-import uPlot from "uplot";
+import React, { useState, MouseEvent } from "react";
 import {
   Button,
   Container,
+  Grid,
   Header,
+  Icon,
   Image,
+  Label,
   Menu,
   MenuItemProps,
+  Popup,
+  Table,
 } from "semantic-ui-react";
+import { LogEntry, useDeviceAPI, useDevices, useFPS, useLogs } from "./hooks";
+import { DataBuffer } from "./plotting";
+import { APIType, DeviceId, DeviceInfo } from "./api";
+import { CombinedSpectrumPlot, TracePlot } from "./plot_components";
 
 type ContentPane = "configure" | "plot" | "about";
 
 export const App = () => {
-  const [activePane, setActivePane] = useState<ContentPane>("plot");
-  const [plotNames, setPlotNames] = useState<string[]>(["sensor 123"]);
-  const oneMorePlot = () =>
-    setPlotNames((x) => [...x, "sensor " + ("" + Math.random()).slice(3, 6)]);
+  const { api, changeAPIType } = useDeviceAPI();
+  const [logs, addLogMessage] = useLogs(100);
+  const { setFPSRef } = useFPS(true);
+
+  const [activePane, setActivePane] = useState<ContentPane>("configure");
+
+  const { connect, connectedDevice, dataBuffer, devices, disconnect, updateDevices } = useDevices(
+    api,
+    addLogMessage
+  );
+
+  const connectAndViewPlot = async (id: string) => {
+    await connect(id);
+    setActivePane("plot");
+  };
 
   return (
-    <Container fluid={true}>
-      <TopBar activePane={activePane} setActivePane={setActivePane} />
-      <Header as="h1">this is the {activePane} pane</Header>
-      {plotNames.map((name) => (
-        <ExampleGraph name={name} key={name} hidden={activePane !== "plot"} />
-      ))}
-      {activePane === "configure" ? (
-        <ConfigurePane oneMorePlot={oneMorePlot} />
-      ) : activePane === "about" ? (
-        "this is an about page, do we need this?"
-      ) : null}
-    </Container>
+    <>
+      <TopBar activePane={activePane} setActivePane={setActivePane} setFPSRef={setFPSRef} />
+      <Container fluid>
+        {activePane === "plot" && !dataBuffer ? (
+          <Header>
+            <Button onClick={() => setActivePane("configure")}>Connect a device first</Button>
+          </Header>
+        ) : activePane === "plot" && dataBuffer ? (
+          <PlotPane dataBuffer={dataBuffer} />
+        ) : activePane === "configure" ? (
+          <ConfigurePane
+            apiType={api.type}
+            changeAPIType={changeAPIType}
+            connect={connectAndViewPlot}
+            connectedDevice={connectedDevice}
+            devices={devices}
+            disconnect={disconnect}
+            logs={logs}
+            updateDevices={updateDevices}
+          />
+        ) : activePane === "about" ? (
+          <h4>
+            <a href="https://twinleaf.com/" target="_blank">
+              Twinleaf website
+            </a>
+          </h4>
+        ) : null}
+      </Container>
+    </>
   );
 };
 
-const ConfigurePane = ({ oneMorePlot }: { oneMorePlot: () => void }) => {
+type ConfigurePaneProps = {
+  apiType: APIType;
+  changeAPIType: (apiType: APIType) => void;
+  connect: (id: DeviceId) => Promise<void>;
+  connectedDevice: DeviceId | undefined;
+  devices: Record<DeviceId, DeviceInfo | undefined>;
+  disconnect: () => Promise<void>;
+  logs: LogEntry[];
+  updateDevices: () => void;
+};
+const ConfigurePane = ({
+  apiType,
+  changeAPIType,
+  connect,
+  connectedDevice,
+  devices,
+  disconnect,
+  logs,
+  updateDevices,
+}: ConfigurePaneProps) => {
+  const connectedDeviceInfo = connectedDevice === undefined ? undefined : devices[connectedDevice];
+  const connectedName = connectedDeviceInfo?.name || connectedDevice;
+
   return (
-    <div>
-      This is where you configure
-      <Button onClick={oneMorePlot}>Add Plot</Button>
-    </div>
+    <>
+      <Header as="h1">
+        {connectedDevice ? "Connected to " + connectedName : "Not connected to a device"}
+      </Header>
+      <Devices
+        changeAPIType={changeAPIType}
+        connect={connect}
+        connectedDevice={connectedDevice}
+        devices={devices}
+        apiType={apiType}
+        disconnect={disconnect}
+        updateDevices={updateDevices}
+      />
+      <div style={{ height: 300, overflowY: "auto" }}>
+        <code>
+          <pre>{logs.map((x) => `${x.log_type}: ${x.log_message}`).join("\n")}</pre>
+        </code>
+      </div>
+    </>
   );
 };
 
-function foo(x: number): number {
-  return "asdf"; // this is a type error! and that shows TypeScript is working.
-  // However, esbuild is not a type checker! It bundles code with type errors no problem.
-}
+type DevicesProps = {
+  changeAPIType: (apiType: APIType) => void;
+  connect: (id: DeviceId) => Promise<void>;
+  connectedDevice: DeviceId | undefined;
+  devices: Record<DeviceId, DeviceInfo | undefined>;
+  disconnect: () => Promise<void>;
+  apiType: APIType;
+  updateDevices: () => void;
+};
+const Devices = (props: DevicesProps) => {
+  const { changeAPIType, connect, connectedDevice, devices, disconnect, updateDevices, apiType } =
+    props;
+  return (
+    <Table celled>
+      <Table.Header>
+        <Table.Row>
+          <Table.HeaderCell width={6}>Device</Table.HeaderCell>
+          <Table.HeaderCell width={4}>Device Info</Table.HeaderCell>
+          <Table.HeaderCell width={6}></Table.HeaderCell>
+        </Table.Row>
+      </Table.Header>
+
+      <Table.Body>
+        {Object.keys(devices).map((id) => (
+          <Table.Row key={id}>
+            <Table.Cell>
+              {connectedDevice === id && <Label ribbon>Connected</Label>}
+              {id}
+            </Table.Cell>
+            <Table.Cell>
+              <code>
+                <pre>{devices[id] ? JSON.stringify(devices[id], null, 2) : ""}</pre>
+              </code>
+            </Table.Cell>
+            <Table.Cell>
+              {connectedDevice === id ? (
+                <>
+                  <Button onClick={disconnect}>Disconnect</Button>
+                </>
+              ) : (
+                <Button onClick={() => connect(id)}>Connect</Button>
+              )}
+            </Table.Cell>
+          </Table.Row>
+        ))}
+      </Table.Body>
+
+      <Table.Footer>
+        <Table.Row>
+          <Table.HeaderCell colSpan="3">
+            <Menu>
+              <Menu.Item>
+                <Button onClick={updateDevices}>Scan again for devices</Button>
+              </Menu.Item>
+              <Menu.Item>
+                using {apiType === "Tauri" ? "Rust Proxy" : apiType} to find devices
+                <Popup trigger={<Icon name="help" />} hoverable position="top center" wide="very">
+                  <Grid centered divided columns="equal">
+                    {typeof window.__TAURI__ !== "undefined" && (
+                      <Grid.Column textAlign="center" verticalAlign="top">
+                        <Header as="h4">Native Serial</Header>
+                        <p style={{ height: 120 }}>
+                          Discover Twinleaf devices over serial via Rust proxy
+                        </p>
+                        {apiType === "Tauri" ? (
+                          <Button disabled>in use</Button>
+                        ) : (
+                          <Button onClick={() => changeAPIType("Tauri")}>switch</Button>
+                        )}
+                      </Grid.Column>
+                    )}
+                    <Grid.Column textAlign="center" verticalAlign="top">
+                      <Header as="h4">WebSerial</Header>
+                      <p style={{ height: 120 }}>
+                        Discover Twinleaf devices over TIO via WebSerial
+                      </p>
+                      {apiType === "WebSerial" ? (
+                        <Button disabled>in use</Button>
+                      ) : (
+                        <Button disabled>switch (experimental)</Button>
+                      )}
+                    </Grid.Column>
+                    <Grid.Column textAlign="center" verticalAlign="top">
+                      <Header as="h4">WebSocket</Header>
+                      <p style={{ height: 120 }}>
+                        Discover Twinleaf devices through a tio-proxy via WebSocket communication
+                      </p>
+                      {apiType === "WebSocket" ? (
+                        <Button disabled>in use</Button>
+                      ) : (
+                        <Button disabled>not yet</Button>
+                      )}
+                    </Grid.Column>
+                    <Grid.Column textAlign="center" verticalAlign="top">
+                      <Header as="h4">Demo</Header>
+                      <p style={{ height: 120 }}>
+                        Don't have a Twinleaf device? Use fake devices to see how things work.
+                      </p>
+                      {apiType === "Demo" ? (
+                        <Button disabled>in use</Button>
+                      ) : (
+                        <Button onClick={() => changeAPIType("Demo")}>switch</Button>
+                      )}
+                    </Grid.Column>
+                  </Grid>
+                </Popup>
+              </Menu.Item>
+            </Menu>
+          </Table.HeaderCell>
+        </Table.Row>
+      </Table.Footer>
+    </Table>
+  );
+};
 
 const TopBar = ({
   activePane,
   setActivePane,
+  setFPSRef,
 }: {
   activePane: ContentPane;
   setActivePane: (pane: ContentPane) => void;
+  setFPSRef: (el: HTMLElement | null) => void;
 }) => {
-  const handleItemClick = (e: MouseEvent, { name }: MenuItemProps) => {
+  const handleItemClick = (_: MouseEvent, { name }: MenuItemProps) => {
     setActivePane(name as ContentPane);
   };
   return (
     <Menu inverted style={{ backgroundColor: "#1b1c1d" }}>
-      <Image
-        src="/img/Twinleaf-Logo-White.png"
-        size="small"
-        style={{ margin: "10px" }}
-      />
-      <Menu.Item
-        name="configure"
-        active={activePane === "configure"}
-        onClick={handleItemClick}
-      >
+      <Image src="./img/Twinleaf-Logo-White.png" size="small" style={{ margin: "10px" }} />
+      <Menu.Item name="configure" active={activePane === "configure"} onClick={handleItemClick}>
         Configure
       </Menu.Item>
-      <Menu.Item
-        name="plot"
-        active={activePane === "plot"}
-        onClick={handleItemClick}
-      >
+      <Menu.Item name="plot" active={activePane === "plot"} onClick={handleItemClick}>
         Plot
       </Menu.Item>
-      <Menu.Item
-        name="about"
-        active={activePane === "about"}
-        onClick={handleItemClick}
-      >
+      <Menu.Item name="about" active={activePane === "about"} onClick={handleItemClick}>
         About
       </Menu.Item>
       <Menu.Item>
-        <FPSCounter />
+        <span ref={setFPSRef} />
       </Menu.Item>
     </Menu>
   );
 };
 
-type ExampleGraphProps = {
-  hidden: boolean;
-  name: string;
+type PlotPaneProps = {
+  dataBuffer: DataBuffer;
 };
+const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
+  (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
+  const [windowSize, setWindowSize] = useState(dataBuffer.size);
+  const [paused, setPaused] = useState(false);
 
-const ExampleGraph = (props: ExampleGraphProps) => {
-  const [plotting, setPlotting] = useState(false);
-
-  const plotBuffer = useRef<FakePlotBuffer>(
-    new FakePlotBuffer({
-      interval: 5,
-      loop: 2000,
-      hz: 100,
-    })
-  );
-  plotBuffer.current.start();
-  (window as any).plotBuffer = plotBuffer.current; // a way to debug an object interactively
-
-  const elRef = useRef<HTMLDivElement>();
-  const plot = useRef<ReturnType<typeof makePlot>>();
-  const setEl = useCallback((el) => {
-    elRef.current = el;
-    // kick something off synchronously here
-    plot.current = makePlot(el, plotBuffer.current.data, props.name);
-  }, []);
-
-  const startPlotting = () => {
-    setPlotting(true);
-    plot.current?.start && plot.current.start();
-  };
-  const stopPlotting = () => {
-    setPlotting(false);
-    plot.current?.stop && plot.current.stop();
-  };
+  const colors = ["red", "green", "blue"];
 
   return (
-    <div hidden={props.hidden}>
-      <Button onClick={startPlotting} disabled={plotting}>
+    <div>
+      <Button onClick={() => setPaused(false)} disabled={!paused}>
         Start plotting
       </Button>
-      <Button onClick={stopPlotting} disabled={!plotting}>
+      <Button onClick={() => setPaused(true)} disabled={paused}>
         Pause plottling
       </Button>
-      <div ref={setEl} />
+      <Slider
+        min={100}
+        max={4000}
+        onChange={(n: number) => {
+          dataBuffer.setWindowSize(n);
+          setWindowSize(n);
+        }}
+        initial={dataBuffer.size}
+      />
+      {windowSize} samples
+      {dataBuffer.channelNames.map((_name, i) => (
+        <TracePlot
+          key={i}
+          color={colors[i % colors.length]}
+          channelIndex={i}
+          dataBuffer={dataBuffer}
+          showTitle={i === 0}
+          paused={paused}
+        />
+      ))}
+      {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} />}
     </div>
   );
 };
 
-class FakePlotBuffer {
-  interval: number;
-  hz: number;
-  loop: number;
-  added: number;
-  data: [number[], number[], number[], number[]] = [[], [], [], []];
-  intervalTimer: ReturnType<typeof setInterval>;
-  running = false;
-  t0: number;
-
-  constructor({
-    interval,
-    loop,
-    hz,
-  }: {
-    interval: number;
-    loop: number;
-    hz: number;
-  }) {
-    this.loop = loop;
-    this.interval = interval;
-    this.added = 0;
-    this.hz = hz;
-  }
-
-  addData = () => {
-    const now = Date.now();
-    const delta = now - this.t0; // in milliseconds
-    const toAdd = Math.floor((this.hz * delta) / 1000 - this.added);
-
-    for (let i = 0; i < toAdd; i++) {
-      this.added += 1;
-      this.data[0].push(this.t0 + this.added / (this.hz / 1000));
-      this.data[1].push(0 - Math.random());
-      this.data[2].push(-1 - Math.random());
-      this.data[3].push(-2 - Math.random());
-    }
-
-    while (this.data[0].length > this.loop) {
-      this.data[0].shift();
-      this.data[1].shift();
-      this.data[2].shift();
-      this.data[3].shift();
-    }
+type SliderProps = {
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+  initial: number;
+};
+const Slider = ({ min, max, onChange, initial }: SliderProps) => {
+  const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(e.target.valueAsNumber);
   };
-
-  start() {
-    if (this.running) return;
-    this.running = true;
-    this.t0 = Date.now();
-    this.intervalTimer = setInterval(this.addData, this.interval);
-  }
-
-  stop() {
-    clearTimeout(this.intervalTimer);
-    this.running = false;
-  }
-}
-
-function makePlot(
-  el: HTMLElement,
-  data: [number[], number[], number[], number[]],
-  title: string
-): { plot: uPlot; start: () => void; stop: () => void } {
-  const windowSize = 10000;
-  function getSize() {
-    // TODO use el.clientWidth in the future + a resizeObserver
-    return {
-      width: window.innerWidth - 100,
-      height: Math.floor((window.innerWidth - 100) / 3),
-    };
-  }
-
-  const scales = {
-    x: {},
-    y: {
-      auto: false,
-      range: [-3.5, 0.5] as [number, number],
-    },
-  };
-
-  const opts = {
-    title,
-    ...getSize(),
-    pxAlign: 0,
-    ms: 1 as const,
-    scales,
-    pxSnap: false,
-    series: [
-      {},
-      {
-        stroke: "red",
-        paths: uPlot.paths.linear!(),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: true },
-      },
-      {
-        stroke: "blue",
-        paths: uPlot.paths.spline!(),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: true },
-      },
-      {
-        stroke: "purple",
-        paths: uPlot.paths.stepped!({ align: 1 }),
-        spanGaps: true,
-        pxAlign: 0,
-        points: { show: true },
-      },
-    ],
-  };
-
-  let u = new uPlot(opts, data, el);
-
-  // TODO move this into a hook or stateful object
-  // TODO debounce this, window resize behavior feels bad
-  let scheduledPlotUpdate: ReturnType<typeof requestAnimationFrame>;
-  function stopRescheduling() {
-    cancelAnimationFrame(scheduledPlotUpdate);
-  }
-  function update() {
-    const now = Date.now();
-    const scale = { min: now - windowSize, max: now };
-
-    u.setData(data, false);
-    u.setScale("x", scale);
-
-    scheduledPlotUpdate = requestAnimationFrame(update);
-  }
-
-  // TODO move this into a hook
-  let lastResize = 0;
-  window.addEventListener("resize", (e) => {
-    // debounce to prevent Tauri crash
-    // a real debounce would set a timer too
-    if (Date.now() < lastResize + 1000) {
-      return;
-    }
-    u.setSize(getSize());
-    lastResize = Date.now();
-  });
-
-  return { plot: u, start: update, stop: stopRescheduling };
-}
-
-const FPSCounter = () => {
-  const elRef = useRef<HTMLSpanElement>();
-  useEffect(() => {
-    let renders: number[] = [];
-
-    const recordFrame = () => {
-      const now = performance.now();
-      renders.push(now);
-      renders = renders.filter((t) => t > now - 1000);
-      if (elRef.current) {
-        elRef.current.innerHTML = "" + renders.length + " FPS";
-      }
-      requestAnimationFrame(recordFrame);
-    };
-
-    const handle = requestAnimationFrame(recordFrame);
-
-    return function cleanup() {
-      cancelAnimationFrame(handle);
-    };
-  });
-
-  return <span ref={elRef}></span>;
+  return (
+    <input value={initial} onChange={_onChange} type="range" name="window" min={min} max={max} />
+  );
 };

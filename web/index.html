@@ -1,25 +1,27 @@
 <html>
 <head>
   <link rel="stylesheet" href="css/uPlot.min.css">
-  <script src="js/twinleaf-web-ui.js"></script>
+  <style>
+    * {
+      font-variant-numeric: tabular-nums;
+    }
+    .ui.fluid.container {
+      margin-left: 1em !important;
+      margin-right: 1em !important;
+      width: calc(100% - 2em) !important;
+    }
+  </style>
 </head>
 <body>
   <link
     async
     rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/semantic-ui@2/dist/semantic.css"
+    href="./css/semantic.min.css"
   />
-
 <div id="root">
 <!-- The dynamically generated Twinleaf sensor monitor app gets inserted here -->
 </div>
 
-<script>
-const e = React.createElement;
-// Read ./main.js to see what components are available
-const TwinleafApp = e(App, {toWhat: 'World'}, null);
-
-ReactDOM.render(TwinleafApp, document.querySelector('#root'));
-</script>
+<script src="js/twinleaf-web-ui.js"></script>
 </body>
 </html>
