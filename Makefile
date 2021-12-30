@@ -30,7 +30,7 @@ build-tauri: build-js ## Build Tauri desktop application for dev (cargo)
 
 .PHONY: build-js
 build-js: ## Build Javascript bundle (esbuild)
-	node_modules/.bin/esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js
+	node_modules/.bin/esbuild web/main.js --bundle --outfile=web/js/twinleaf-web-ui.js --minify
 
 .PHONY: dev-js
 dev-js: ## Run Javascript devserver (esbuild)

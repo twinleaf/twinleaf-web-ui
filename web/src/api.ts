@@ -5,10 +5,7 @@
 // - a WebSocket
 
 import { invoke } from "@tauri-apps/api";
-import {
-  Event as TauriEvent,
-  listen as TauriListen,
-} from "@tauri-apps/api/event";
+import { Event as TauriEvent, listen as TauriListen } from "@tauri-apps/api/event";
 
 export type LogDevicePacket = {
   packet_type: "log";
@@ -86,12 +83,7 @@ let demoOrientationConnected = false;
 let demoOrientationCb: undefined | ((packet: DevicePacket) => void);
 let demoSampleNumber = 0;
 function handleOrientation(e: DeviceOrientationEvent) {
-  if (
-    demoOrientationCb &&
-    e.alpha !== null &&
-    e.beta !== null &&
-    e.gamma !== null
-  ) {
+  if (demoOrientationCb && e.alpha !== null && e.beta !== null && e.gamma !== null) {
     demoOrientationCb({
       packet_type: "data",
       sample_number: demoSampleNumber++,
@@ -117,10 +109,8 @@ export const DemoAPI: API = {
         sample_number: demoSampleNumber++,
         data_floats: [
           2 * randn_bm() - 1,
-          1 * randn_bm() -
-            0.5 +
-            Math.sin(demoSampleNumber / (2 * Math.PI)) * 0.5,
-          Math.sin(demoSampleNumber / (2 * Math.PI) / 3) * 0.3,
+          1 * randn_bm() - 0.5 + Math.sin(demoSampleNumber / (2 * Math.PI)) * 0.5,
+          Math.sin(demoSampleNumber / (2 * Math.PI) / 3) * 0.3 + 0.2,
         ],
       });
     const sendLogPacket = () =>
@@ -129,14 +119,13 @@ export const DemoAPI: API = {
         log_type: "warn",
         log_message: "This is a log message",
       });
-    let timer: ReturnType<typeof setTimeout>;
+
     const sendAndSchedule = () => {
       sendLogPacket();
       const now = performance.now();
       if (demoT0 === 0) demoT0 = now;
       const delta = now - demoT0;
-      let toSend =
-        Math.round((delta * demoPacketsPerInterval) / demoInterval) - demoSent;
+      let toSend = Math.round((delta * demoPacketsPerInterval) / demoInterval) - demoSent;
       demoSent += toSend;
       if (toSend > 100000) {
         console.log("Demo data generation too far behind, giving up");
@@ -153,7 +142,7 @@ export const DemoAPI: API = {
       clearInterval(timer);
     };
 
-    timer = setInterval(sendAndSchedule, demoInterval);
+    const timer = setInterval(sendAndSchedule, demoInterval);
     return Promise.resolve(stopListening);
   },
 
@@ -180,9 +169,7 @@ export const DemoAPI: API = {
       demoInterval = 20;
       demoPacketsPerInterval = 20;
     } else if (uri.includes("orientation")) {
-      if (
-        typeof (DeviceOrientationEvent as any).requestPermission === "function"
-      ) {
+      if (typeof (DeviceOrientationEvent as any).requestPermission === "function") {
         await (DeviceOrientationEvent as any).requestPermission();
       }
       window.addEventListener("deviceorientation", handleOrientation, true);
@@ -208,46 +195,10 @@ export const DemoAPI: API = {
 };
 
 /////////////////////////////////////////////////////////////////
-// WebSerialAPI - doesn't work yet, this is just a place to start
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-// TODO UNTESTED CODE
-async function sendHeartbeat(writer: WritableStreamDefaultWriter) {
-  // Hack: hardcoded heartbeat to switch to binary mode.
-  // For this we don't really even need to send it periodically.
-  const data = Uint8Array.from([
-    0xc0, 0x05, 0x00, 0x00, 0x00, 0x2e, 0x2f, 0x9a, 0x16, 0xc0,
-  ]);
-  await writer.write(data);
-}
-
-// UNTESTED CODE
-function processPacket(pkt: Uint8Array): DevicePacket | undefined {
-  // filter out short messages
-  if (pkt.byteLength < 8) return;
-  // only care about log messages
-  if (pkt[0] != 0x1) return;
-  // TODO: verify fields and crc32 for real
-  const payloadSize = pkt[2] + 256 * pkt[3];
-  if (payloadSize + 8 < pkt.byteLength || payloadSize <= 5) return;
-  console.log("LOG:", decoder.decode(pkt.subarray(9, payloadSize + 4)));
-  const log_message = decoder.decode(pkt.subarray(9, payloadSize + 4));
-
-  return {
-    packet_type: "log",
-    log_type: "warn", // TODO extract this data
-    log_message,
-  };
-}
-
-// Incomplete + untested, I just grabbed the code from the demo branch
+// There was discussion of a WebSerial API
 export class WebSerialAPI implements API {
-  port: SerialPort;
-  ports: Record<"string", SerialPort>;
-  receiveLoop: Promise<void>;
-  type = "WebSerial" as const;
-  breakout = false;
+  // class because I'm guessing we'll need some state
+  type = "WebSocket" as const;
   static instance: WebSerialAPI;
   static getInstance() {
     if (!this.instance) {
@@ -260,91 +211,13 @@ export class WebSerialAPI implements API {
     throw new Error("not implemented");
     return Promise.resolve(function cleanup() {});
   }
-  // WebSerial connects only to a single device, and keeps the connection open
-  // to avoid prompting the user again.
-  async enumerateDevices() {
-    // getPorts returns all ports the page has permission to access,
-    // but without labels! So just use this requestPort for now.
-    //const ports = await navigator.serial.getPorts(); // should return all;
-
-    let port: SerialPort;
-    try {
-      port = await navigator.serial.requestPort();
-    } catch (e) {
-      // hopefully this is " DOMException: No port selected by the user."
-      return Object.keys(this.ports);
-    }
-    let alreadyAdded = false;
-    for (const port of Object.values(this.ports)) {
-      if (this.port === port) alreadyAdded = true;
-    }
-    if (alreadyAdded) {
-      return Object.keys(this.ports);
-    }
-    this.ports["serial-device-" + Object.keys(this.ports).length] = this.port;
-    // TODO what's proper error handling look like here?
-    return Object.keys(this.ports);
+  enumerateDevices() {
+    throw new Error("not implemented");
+    return Promise.resolve([]);
   }
-
-  // UNTESTED CODE - need a device to wire this up.
-  // This is supposed to
-  async connectDevice(uri: string) {
-    if (Object.keys(this.ports).includes(uri)) {
-      throw new Error("No such serial port as " + uri);
-    }
-    const port: SerialPort = this.ports[uri];
-    this.port = port;
-    await port.open({ baudRate: 115200, bufferSize: 4096 });
-    if (!port.writable) {
-      throw new Error("the port is supposed to be writeable");
-    }
-    await sendHeartbeat(port.writable.getWriter());
-    this.receiveLoop = this.receive(port);
-    // TODO receive enough messages to get the name and channels for the device
-    return Promise.resolve({
-      name: "serial port name TODO",
-      channels: ["TODOa"],
-    });
-  }
-
-  // TODO untested
-  async receive(port: SerialPort): Promise<void> {
-    var curPacket: number[] = [];
-
-    // outer loop to get a new reader in case of reader exceptions
-    // see https://web.dev/serial/#read-port for more
-    while (port.readable && !this.breakout) {
-      let reader = port.readable.getReader();
-      try {
-        while (!this.breakout) {
-          let escape = false;
-          const { value, done } = await reader.read();
-          if (done || this.breakout || value === undefined) break;
-
-          value.forEach((byte) => {
-            if (byte === 0xc0) {
-              // end of packet
-              processPacket(Uint8Array.from(curPacket));
-              curPacket = [];
-              escape = false;
-            } else {
-              if (escape) {
-                escape = false;
-                if (byte === 0xdc) curPacket.push(0xc0);
-                if (byte === 0xdd) curPacket.push(0xdb);
-              } else {
-                if (byte === 0xdb) escape = true;
-                else curPacket.push(byte);
-              }
-            }
-          });
-        }
-      } catch (error) {
-        console.log("ERROR:", error);
-      } finally {
-        reader.releaseLock();
-      }
-    }
+  connectDevice(_uri: string) {
+    throw new Error("not implemented");
+    return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
   }
   async disconnect() {
     throw new Error("not implemented");

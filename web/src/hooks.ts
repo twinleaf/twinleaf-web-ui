@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   API,
   APIType,
@@ -10,7 +10,7 @@ import {
   WebSerialAPI,
   WebSocketAPI,
 } from "./api";
-import { DataBuffer, MakePlot } from "./plotting";
+import { DataBuffer } from "./plotting";
 
 const buildApi = (apiType: APIType): API => {
   if (apiType === "Demo") return DemoAPI; // stateless
@@ -38,13 +38,14 @@ export type LogEntry = {
   log_message: string;
 };
 
-export const useLogs = (
-  capacity: number
-): [LogEntry[], (msg: LogEntry) => void, () => void] => {
+export const useLogs = (capacity: number): [LogEntry[], (msg: LogEntry) => void, () => void] => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+
+  // capacity can't be changed later
+  const capacityRef = useRef(capacity);
   const addLogMessage = useCallback((msg: LogEntry) => {
     setLogs((logs) => {
-      if (logs.length >= capacity) {
+      if (logs.length >= capacityRef.current) {
         return [...logs.slice(1), msg];
       }
       return [...logs, msg];
@@ -68,12 +69,8 @@ export const useDevices = (
   disconnect: () => Promise<void>;
   updateDevices: () => void;
 } => {
-  const [devices, setDevices] = useState<
-    Record<DeviceId, DeviceInfo | undefined>
-  >({});
-  const [connectedDevice, setConnectedDevice] = useState<
-    DeviceId | undefined
-  >();
+  const [devices, setDevices] = useState<Record<DeviceId, DeviceInfo | undefined>>({});
+  const [connectedDevice, setConnectedDevice] = useState<DeviceId | undefined>();
   const stopListening = useRef<() => void>();
   const dataBuffer = useRef<DataBuffer>();
   const disconnect = async () => {
@@ -107,9 +104,7 @@ export const useDevices = (
         // if/else if clauses above already exhaustively match the subtypes of DevicePacket
         // (which is good!) so this runtime error should only occur if this function
         // is passed something that isn't a DevicePacket somehow.
-        throw new Error(
-          "received unknown packet type:" + (packet as any).packet_type
-        );
+        throw new Error("received unknown packet type:" + (packet as any).packet_type);
       }
     };
 
@@ -151,15 +146,18 @@ export const useDevices = (
 // useRAF means use requestAnimationFrame to guess FPS.
 // This is a useful measure of frames per second if only
 // if real work is being done on every frame.
+// Otherwise call reportFrame every time a frame that
+// matters is rendered to avoid a bunch of fast frames
+// that did no work artificially inflating FPS.
 export const useFPS = (
   useRAF = false
 ): {
   reportFrame: () => void;
   setFPSRef: (el: HTMLElement | null) => void;
 } => {
-  let renders = useRef<number[]>([]);
-  let lastLog = useRef<number>(performance.now());
-  let elRef = useRef<HTMLElement | null>(null);
+  const renders = useRef<number[]>([]);
+  const lastLog = useRef<number>(performance.now());
+  const elRef = useRef<HTMLElement | null>(null);
 
   const reportFrame = useCallback(() => {
     const now = performance.now();
@@ -179,8 +177,11 @@ export const useFPS = (
     }
   }, []);
 
+  // useRAF can't be changed later
+  const useRAFRef = useRef(useRAF);
+
   useEffect(() => {
-    if (useRAF) {
+    if (useRAFRef.current) {
       let requestId: ReturnType<typeof requestAnimationFrame>;
       const onRaf = () => {
         reportFrame();
@@ -201,10 +202,7 @@ export const useFPS = (
 // to see e.g. which prop caused a rerender by changing.
 // Function objects (aka closures) changing identity are the most
 // common surprise.
-export const useWhatChanged = (
-  props: Record<string, any>,
-  label: string = ""
-) => {
+export const useWhatChanged = (props: Record<string, any>, label = "") => {
   const changed = [];
   const prev = useRef<Record<string, any>>();
   if (!prev.current) {
@@ -226,31 +224,29 @@ export const useWhatChanged = (
   prev.current = props;
 };
 
-export const useUplot = (dataBuffer: DataBuffer, makePlot: MakePlot) => {
-  const plot = useRef<ReturnType<MakePlot>>();
-  const [plotting, setPlotting] = useState(false);
-  const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
+export const useWidth = (el: HTMLElement | null, initial = 100): number => {
+  const [width, setWidth] = useState<number>();
 
-  const start = () => {
-    if (!plot.current?.start) return;
-    plot.current.start();
-    setPlotting(true);
-  };
-  const stop = () => {
-    setPlotting(false);
-    plot.current?.stop && plot.current.stop();
-  };
-  useEffect(() => {
-    if (el) {
-      plot.current = makePlot(el, dataBuffer);
-      start();
-      return function cleanup() {
-        plot.current?.destroy();
-        plot.current = undefined;
-        el.innerHTML = "";
-      };
-    }
-    return;
-  }, [dataBuffer, el]);
-  return { setPlotEl, start, stop, plotting };
+  const observer = useRef<ResizeObserver>();
+  useLayoutEffect(() => {
+    observer.current = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setWidth(entry.contentRect.width);
+      }
+    });
+    return function cleanup() {
+      observer.current?.disconnect();
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!el) return;
+    setWidth(el.clientWidth);
+    observer.current?.observe(el);
+    return function cleanup() {
+      observer.current?.unobserve(el);
+    };
+  }, [el]);
+
+  return width || el?.clientWidth || initial;
 };

@@ -15,7 +15,10 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.0.0-beta.10",
+    "@typescript-eslint/eslint-plugin": "^5.8.1",
+    "@typescript-eslint/parser": "^5.8.1",
     "esbuild": "^0.14.5",
+    "eslint": "^8.5.0",
     "eslint-plugin-react-hooks": "^4.3.0"
   },
   "scripts": {
