@@ -3,11 +3,11 @@
 This Twinleaf app uses
 
 - React
+- JSX
 - TypeScript
 - Semantic UI
 - uPlot
 - esbuild
-- JSX
 
 ## Motivation
 
@@ -61,14 +61,18 @@ There are two mainloop-ish things going on though, two ways that things update.
 
 React doesn't notice DOM changes that it didn't cause, so care has to be taken to prevent React from stomping over our plots.
 
-There's just one thread, so these don't interrupt each other. If a React render + commit (
-There are two "mainloops" running simultaneously in this app
+There's just one thread, so these don't interrupt each other.
 
 By doing all graphing in a separate requestAnimationFrame loop, the React
 code shouldn't need to be optimized. Avoiding useMemo, useCallback etc. hooks
 (tricks to make React renders more efficient) hopefully makes the code more accessible.
+In efficiency-minded React code careful tracking of object identity is necessary,
+otherwise e.g. new function objects are created on every render and when these function
+objects are used in an onClick handler, that DOM element needs to be deleted and reinserted
+into the DOM. In normal React code like this app, we don't worry about object identity and
+just commit a bunch of changes every time the user clicks a button.
 
-## Tauri API
+## Tauri API example code
 
 ```
 import { invoke } from "@tauri-apps/api";
