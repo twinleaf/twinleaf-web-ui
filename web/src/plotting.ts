@@ -159,7 +159,9 @@ export function fpsFormat(num: number) {
   return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
 }
 
-export type PlotUpdateMethod = { method: "animationFrame" } | { method: "interval"; interval: 200 };
+export type PlotUpdateMethod =
+  | { method: "animationFrame" }
+  | { method: "interval"; interval: number };
 
 export class UpdatingUPlot {
   readonly el: HTMLElement;
