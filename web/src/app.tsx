@@ -296,6 +296,7 @@ const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
           channelIndex={i}
           dataBuffer={dataBuffer}
           showTitle={i === 0}
+          showAxis={i === 2}
           paused={paused}
         />
       ))}

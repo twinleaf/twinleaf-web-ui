@@ -126,6 +126,7 @@ export type TracePlotProps = {
   channelIndex: number;
   color: string;
   showTitle: boolean;
+  showAxis: boolean;
   paused?: boolean;
 };
 export const TracePlot = ({
@@ -133,6 +134,7 @@ export const TracePlot = ({
   channelIndex,
   color,
   showTitle,
+  showAxis,
   paused,
 }: TracePlotProps) => (
   <Plot
@@ -159,7 +161,7 @@ export const TracePlot = ({
       ],
       axes: [
         {
-          label: "Time (s)",
+          label: showAxis ? "Time (s)": undefined,
         },
         {
           label: dataBuffer.channelNames[channelIndex],
@@ -192,7 +194,14 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlo
       options={{
         height: 160,
         pxAlign: 0,
-        axes: [{ show: true }],
+        axes: [
+          {
+            label: "Hz",
+          },
+          {
+            label: "Noise",
+          },
+        ],
         scales: {
           x: {
             time: false,
