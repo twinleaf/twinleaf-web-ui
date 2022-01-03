@@ -167,6 +167,14 @@ export const TracePlot = ({
           points: { show: false },
         },
       ],
+      axes: [
+        {
+          label: "Time (s)",
+        },
+        {
+          label: dataBuffer.channelNames[channelIndex],
+        },
+      ],
     }}
     updatePlot={(u, dataBuffer, el) => {
       const xs = dataBuffer.getXs();
@@ -194,7 +202,11 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlo
       options={{
         height: 160,
         pxAlign: 0,
-        axes: [{ show: true }],
+        axes: [
+        {label: "Hz"},
+        {label: "Noise"},
+        // { show: true },
+      ],
         ms: 1 as const,
         scales: { x: { time: false } },
         legend: { show: false },
@@ -202,7 +214,7 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlo
           {
             value: (_self, rawValue) => rawValue.toFixed(2) + "Hz",
           },
-          ...dataBuffer.channelNames.map((name, i) => ({
+          ...dataBuffer.channelNames.slice(0,3).map((name, i) => ({
             stroke: colors[i % colors.length],
             label: name,
             spanGaps: true,

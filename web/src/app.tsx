@@ -277,7 +277,7 @@ const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
         Start plotting
       </Button>
       <Button onClick={() => setPaused(true)} disabled={paused}>
-        Pause plottling
+        Pause plotting
       </Button>
       <Slider
         min={100}
@@ -289,7 +289,7 @@ const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
         initial={dataBuffer.size}
       />
       {windowSize} samples
-      {dataBuffer.channelNames.map((_name, i) => (
+      {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
         <TracePlot
           key={i}
           color={colors[i % colors.length]}
