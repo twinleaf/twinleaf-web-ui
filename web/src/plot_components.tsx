@@ -47,7 +47,6 @@ export const Plot = (props: PlotProps) => {
   const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
 
   const width = useWidth(el);
-  console.log("got width of", width, "from hook");
   const widthRef = useRef(width);
   widthRef.current = width;
 
@@ -60,9 +59,7 @@ export const Plot = (props: PlotProps) => {
     const optionsWithWidth = { ...options, width: widthRef.current };
     const updatePlotWithWidth = (u: uPlot, db: DataBuffer, el: HTMLElement): void => {
       updatePlot(u, db, el);
-      console.log("considering setting width to", widthRef.current);
       if (widthRef.current != u.width) {
-        console.log("setting width to", widthRef.current);
         u.setSize({ width: widthRef.current, height: u.height });
       }
     };
@@ -100,13 +97,11 @@ export type SpectrumPlotProps = {
 export const SpectrumPlot = ({ dataBuffer, channelIndex, paused }: SpectrumPlotProps) => (
   <Plot
     dataBuffer={dataBuffer}
-    updateMethod={{ method: "interval", interval: 200 }}
+    updateMethod={{ method: "interval", interval: 100 }}
     paused={paused}
     options={{
       height: 160,
       pxAlign: 0,
-      axes: [{ show: true }],
-      ms: 1 as const,
       scales: { x: { time: false } },
       legend: { show: false },
       series: [
@@ -122,10 +117,6 @@ export const SpectrumPlot = ({ dataBuffer, channelIndex, paused }: SpectrumPlotP
     updatePlot={(u, dataBuffer) => {
       const { amplitudes, freqs } = dataBuffer.spectrum(channelIndex);
       u.setData([freqs, amplitudes], false);
-      u.setScale("x", {
-        min: 0,
-        max: freqs[freqs.length - 1],
-      });
     }}
   />
 );
@@ -152,7 +143,6 @@ export const TracePlot = ({
       title: showTitle ? dataBuffer.deviceName : undefined,
       height: 160,
       pxAlign: 0,
-      ms: 1 as const,
       scales: {
         x: { time: false },
         y: { auto: true },
@@ -202,14 +192,19 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlo
       options={{
         height: 160,
         pxAlign: 0,
-        axes: [
-        {label: "Hz"},
-        {label: "Noise"},
-        // { show: true },
-      ],
-        ms: 1 as const,
-        scales: { x: { time: false } },
-        legend: { show: false },
+        axes: [{ show: true }],
+        scales: {
+          x: {
+            time: false,
+            distr: 3,
+            auto: false,
+            range: (_self: uPlot, initMin: number, initMax: number, _scaleKey: string) => {
+              // a passthrough function here replaces the default of rounding up to the next n^2 or [1-9]*n^10
+              return [initMin, initMax];
+            },
+          },
+        },
+        legend: { show: true },
         series: [
           {
             value: (_self, rawValue) => rawValue.toFixed(2) + "Hz",
@@ -227,14 +222,17 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlo
         const allAmplitudes: number[][] = [];
         let f: number[] = [];
         dataBuffer.channelNames.forEach((_name, i) => {
-          const { amplitudes, freqs } = dataBuffer.spectrum(i);
+          let { amplitudes, freqs } = dataBuffer.spectrum(i);
+          freqs = freqs.slice(1);
+          amplitudes = amplitudes.slice(1).map((x) => (x < 0.01 ? 0.01 : x));
           f = freqs; // overwrites, we'll end up with the last one
           allAmplitudes.push(amplitudes);
         });
 
         u.setData([f, ...allAmplitudes], false);
+
         u.setScale("x", {
-          min: 0,
+          min: f[0],
           max: f[f.length - 1],
         });
       }}

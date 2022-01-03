@@ -159,7 +159,9 @@ export function fpsFormat(num: number) {
   return ("0000" + (Math.round(num * 10) / 10).toFixed(1)).slice(-6);
 }
 
-export type PlotUpdateMethod = { method: "animationFrame" } | { method: "interval"; interval: 200 };
+export type PlotUpdateMethod =
+  | { method: "animationFrame" }
+  | { method: "interval"; interval: number };
 
 export class UpdatingUPlot {
   readonly el: HTMLElement;
@@ -185,10 +187,6 @@ export class UpdatingUPlot {
     this.plot = new uPlot(opts, [[], []], el);
     this.updateMethod = updateMethod;
     this.onUpdate = onUpdate;
-    console.log(
-      "for the initial update (the unscheduled one that runs before calling start()) got",
-      el.clientWidth
-    );
     this.onUpdate(this.plot, dataBuffer, el);
   }
 
@@ -224,16 +222,6 @@ export class UpdatingUPlot {
       clearInterval(this.scheduledPlotUpdate);
     }
     this.scheduledPlotUpdate = undefined;
-  };
-
-  // called on window resize, may be called by React on layout change in the future
-  updateSize = () => {
-    this.plot.setSize({
-      // TODO this should fill containing div (which should by styled to width 100% or similar)
-      // instead of being a function of window size alone.
-      width: window.innerWidth - 40,
-      height: Math.floor((window.innerWidth - 40) / 3),
-    });
   };
 
   destroy = () => {
