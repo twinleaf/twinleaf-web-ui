@@ -310,7 +310,7 @@ impl Device {
                                 Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
                             }
                             Timebase => {
-                                //println!("printing payload len {:?}", raw_packet.payload);
+                                println!("TIMEBASE");
                                 Packet::TimebaseData(TimebaseData::from_bytes(
                                     &raw_packet.payload))
                             }
@@ -328,7 +328,7 @@ impl Device {
                             }
                         };
                         match packet {
-                            Packet::Log(_) | Packet::StreamData(_) => {
+                            Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) => {
                                 rx_sender.send(packet).unwrap()
                             }
                             _ => (),

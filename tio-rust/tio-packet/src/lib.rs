@@ -352,15 +352,14 @@ pub struct TimebaseData {
 impl TimebaseData {
 
     pub fn from_bytes(raw: &[u8]) -> TimebaseData {
-        println!("printing payload slice {:?}", raw[4..12].len());
         TimebaseData {
             timebase_id: u16::from_le_bytes(raw[0 .. 2].try_into().unwrap()),
             timebase_source: raw[2],
             timebase_epoch: raw[3],
             timebase_start_time: u64::from_le_bytes(raw[4..12].try_into().unwrap()),
-            timebase_period_num_us: u32::from_le_bytes(raw[13..18].try_into().unwrap()),
-            timebase_period_denom_us: u32::from_le_bytes(raw[18..23].try_into().unwrap()),
-            timebase_flags: u32::from_le_bytes(raw[23..28].try_into().unwrap()),
+            timebase_period_num_us: u32::from_le_bytes(raw[12..16].try_into().unwrap()),
+            timebase_period_denom_us: u32::from_le_bytes(raw[16..20].try_into().unwrap()),
+            timebase_flags: u32::from_le_bytes(raw[20..24].try_into().unwrap()),
             timebase_stability_ppb: f32::from_le_bytes(raw[24..28].try_into().unwrap()),
             timebase_src_params: raw[28..].to_vec(),
             
