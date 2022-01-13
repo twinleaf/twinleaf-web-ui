@@ -77,7 +77,7 @@ fn run(opt: Opt) -> Result<()> {
             // prints to stdout
             Device::enumerate_devices();
         }
-        // "car-raw" was used when developing to just dump CSV-style data rows to stdout from
+        // "cat-raw" was used when developing to just dump CSV-style data rows to stdout from
         // serial ports (it does not try to parse binary packets)
         Command::CatRaw { uri } => {
             let mut port = serialport::new(uri, 115_200)
@@ -98,11 +98,11 @@ fn run(opt: Opt) -> Result<()> {
             loop {
                 let packet = device.rx.recv()?;
                 println!("{:?}", packet);
-                use tio_packet::Packet;
-                if let Packet::StreamData(sd) = packet {
-                    // TODO: this is a temporary hack to make debugging easier
-                    println!("\tdata as f32: {:?}", sd.as_f32());
-                }
+                // use tio_packet::Packet;
+                // if let Packet::StreamData(sd) = packet {
+                //     // TODO: this is a temporary hack to make debugging easier
+                //     println!("\tdata as f32: {:?}", sd.as_f32());
+                // }
             }
         }
         Command::Proxy => {
