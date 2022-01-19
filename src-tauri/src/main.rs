@@ -32,7 +32,7 @@ use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
+use tauri::{AppHandle, CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, Menu, Submenu};
 use tio::{Device, DeviceInfo};
 use tio_packet::Packet;
 
@@ -224,50 +224,44 @@ fn disconnect(state: tauri::State<Arc<Mutex<DeviceJuggler>>>) -> Result<String, 
 }
 
 fn main() {
-    // Configure the menu items (eg, that lurk in the taskbar/systemtray, depending on platform)
-    let hide_menuitem = CustomMenuItem::new("hide".to_string(), "Hide Window");
-    let show_menuitem = CustomMenuItem::new("show".to_string(), "Show Window");
+    //let hide_menuitem = CustomMenuItem::new("hide".to_string(), "Hide Window");
+    //let show_menuitem = CustomMenuItem::new("show".to_string(), "Show Window");
     let quit_menuitem = CustomMenuItem::new("quit".to_string(), "Quit");
-    let tray_menu = SystemTrayMenu::new()
-        .add_item(hide_menuitem)
-        .add_item(show_menuitem)
-        .add_item(quit_menuitem);
-    let system_tray = SystemTray::new().with_menu(tray_menu);
+    let submenu = Submenu::new("File", Menu::new().add_item(quit_menuitem));//).add_item(hide_menuitem).add_item(show_menuitem));
+    let menu = Menu::new()
+        .add_submenu(submenu);
+
+    println!("Running newest version");
 
     // Here is the global state, wrapped for concurrent access
     let juggler_mutex = Arc::new(Mutex::new(DeviceJuggler::new()));
-
     tauri::Builder::default()
         .manage(juggler_mutex)
-        .system_tray(system_tray)
-        // TODO: I bet there is some other "on event" thing we are supposed to register here to
-        // handle "close window" commands and similar)
-        .on_system_tray_event(|app, event| match event {
-            SystemTrayEvent::DoubleClick {
-                position: _,
-                size: _,
-                ..
-            } => {
-                println!("system tray received a double click");
-                let window = app.get_window("main").unwrap();
-                window.show().unwrap();
-            }
-            SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
-                "hide" => {
-                    let window = app.get_window("main").unwrap();
-                    window.hide().unwrap();
-                }
-                "show" => {
-                    let window = app.get_window("main").unwrap();
-                    window.show().unwrap();
-                }
+        .menu(menu)
+        .setup(|app| {
+            let window = app.get_window("main").unwrap();
+            //let window_ = window.clone();
+            window.on_menu_event(move |event| {
+              match event.menu_item_id() {
                 "quit" => {
                     std::process::exit(0);
                 }
+                //"hide" => {
+                //    println!("about to hide");
+                //    //let window_ = app.get_window("main").unwrap();
+                //    window_.hide().unwrap();
+                //    println!("hidden");
+                //}
+                //"show" => {
+                //    println!("about to show");
+                //    window_.show().unwrap();
+                //    println!("shown");
+                //}
                 _ => {}
-            },
-            _ => {}
-        })
+              }
+            });
+            Ok(())
+          })
         // here we ensure the commands we defined above get hooked in so they are accessible from
         // the web context (aka, Javascript)
         .invoke_handler(tauri::generate_handler![
@@ -278,3 +272,57 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+    // Configure the menu items (eg, that lurk in the taskbar/systemtray, depending on platform)
+//     let hide_menuitem = CustomMenuItem::new("hide".to_string(), "Hide Window");
+//     let show_menuitem = CustomMenuItem::new("show".to_string(), "Show Window");
+//     let quit_menuitem = CustomMenuItem::new("quit".to_string(), "Quit");
+//     let tray_menu = SystemTrayMenu::new()
+//         .add_item(hide_menuitem)
+//         .add_item(show_menuitem)
+//         .add_item(quit_menuitem);
+//     let system_tray = SystemTray::new().with_menu(tray_menu);
+
+//     // Here is the global state, wrapped for concurrent access
+//     let juggler_mutex = Arc::new(Mutex::new(DeviceJuggler::new()));
+
+//     tauri::Builder::default()
+//         .manage(juggler_mutex)
+//         .system_tray(system_tray)
+//         // TODO: I bet there is some other "on event" thing we are supposed to register here to
+//         // handle "close window" commands and similar)
+//         .on_system_tray_event(|app, event| match event {
+//             SystemTrayEvent::DoubleClick {
+//                 position: _,
+//                 size: _,
+//                 ..
+//             } => {
+//                 println!("system tray received a double click");
+//                 let window = app.get_window("main").unwrap();
+//                 window.show().unwrap();
+//             }
+//             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+//                 "hide" => {
+//                     let window = app.get_window("main").unwrap();
+//                     window.hide().unwrap();
+//                 }
+//                 "show" => {
+//                     let window = app.get_window("main").unwrap();
+//                     window.show().unwrap();
+//                 }
+//                 "quit" => {
+//                     std::process::exit(0);
+//                 }
+//                 _ => {}
+//             },
+//             _ => {}
+//         })
+//         // here we ensure the commands we defined above get hooked in so they are accessible from
+//         // the web context (aka, Javascript)
+//         .invoke_handler(tauri::generate_handler![
+//             enumerate_devices,
+//             connect_device,
+//             disconnect
+//         ])
+//         .run(tauri::generate_context!())
+//         .expect("error while running tauri application");
+// }

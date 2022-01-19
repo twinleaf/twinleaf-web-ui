@@ -10,7 +10,7 @@ use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpStream};
 use std::thread;
 use std::time::Duration;
 use tio_packet::{
-    LogMessage, Packet, PacketType, RPCRequest, RawPacket, RawPacketHeader, StreamData,
+    LogMessage, Packet, PacketType, RPCRequest, RawPacket, RawPacketHeader, StreamData, TimebaseData,
 };
 
 /// Represents metadata about a device that would be returned by StreamDesc and/or other RPC calls
@@ -197,9 +197,14 @@ impl Device {
                                     StreamZero => Packet::StreamData(StreamData::from_bytes(
                                         &raw_packet.payload,
                                     )),
+                                    Timebase => {
+                                    println!("printing length {:?}", raw_packet.payload.len());
+                                    Packet::TimebaseData(TimebaseData::from_bytes(
+                                        &raw_packet.payload))
+                                    }
                                     Heartbeat => Packet::Empty,
                                     // TODO: actually parse/handle these
-                                    Timebase | Source | Text | RPCResponse | Invalid
+                                    Source | Text | RPCResponse | Invalid
                                     | RPCRequest | RPCError | Stream => {
                                         println!(
                                             "ignoring unhandled packet type: {:?}",
@@ -304,11 +309,16 @@ impl Device {
                             StreamZero => {
                                 Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
                             }
+                            Timebase => {
+                                println!("TIMEBASE");
+                                Packet::TimebaseData(TimebaseData::from_bytes(
+                                    &raw_packet.payload))
+                            }
                             // TODO: should we bother returning heartbeat messages? just drop them
                             // here?
                             Heartbeat => Packet::Empty,
                             // TODO: actually parse/handle these
-                            Timebase | Source | Text | RPCResponse | Invalid | RPCRequest
+                            Source | Text | RPCResponse | Invalid | RPCRequest
                             | RPCError | Stream => {
                                 println!(
                                     "ignoring unhandled packet type: {:?}",
@@ -318,7 +328,7 @@ impl Device {
                             }
                         };
                         match packet {
-                            Packet::Log(_) | Packet::StreamData(_) => {
+                            Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) => {
                                 rx_sender.send(packet).unwrap()
                             }
                             _ => (),

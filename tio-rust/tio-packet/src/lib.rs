@@ -336,6 +336,37 @@ impl StreamData {
     }
 }
 
+#[derive(Debug,PartialEq)]
+pub struct TimebaseData {
+    pub timebase_id: u16,
+    pub timebase_source: u8,
+    pub timebase_epoch: u8,
+    pub timebase_start_time: u64,
+    pub timebase_period_num_us: u32,
+    pub timebase_period_denom_us: u32,
+    pub timebase_flags: u32,
+    pub timebase_stability_ppb: f32,
+    pub timebase_src_params: Vec<u8>,
+}
+
+impl TimebaseData {
+
+    pub fn from_bytes(raw: &[u8]) -> TimebaseData {
+        TimebaseData {
+            timebase_id: u16::from_le_bytes(raw[0 .. 2].try_into().unwrap()),
+            timebase_source: raw[2],
+            timebase_epoch: raw[3],
+            timebase_start_time: u64::from_le_bytes(raw[4..12].try_into().unwrap()),
+            timebase_period_num_us: u32::from_le_bytes(raw[12..16].try_into().unwrap()),
+            timebase_period_denom_us: u32::from_le_bytes(raw[16..20].try_into().unwrap()),
+            timebase_flags: u32::from_le_bytes(raw[20..24].try_into().unwrap()),
+            timebase_stability_ppb: f32::from_le_bytes(raw[24..28].try_into().unwrap()),
+            timebase_src_params: raw[28..].to_vec(),
+            
+        }
+    }
+}
+
 /// High(er) level representation of any packet. The idea is that most application code would use
 /// this abstraction level.
 ///
@@ -350,6 +381,7 @@ pub enum Packet {
     RpcRes(RPCResponse),
     //StreamDesc(StreamDescription),
     StreamData(StreamData),
+    TimebaseData(TimebaseData),
 }
 
 impl Packet {
@@ -360,6 +392,7 @@ impl Packet {
             Packet::RpcReq(_) => PacketType::RPCRequest,
             Packet::RpcRes(_) => PacketType::RPCResponse,
             Packet::StreamData(_) => PacketType::StreamZero,
+            Packet::TimebaseData(_) => PacketType::Timebase,
         }
     }
 
@@ -369,7 +402,7 @@ impl Packet {
             Empty => vec![],
             Log(msg) => msg.to_bytes(),
             RpcReq(req) => req.to_bytes(),
-            RpcRes(_) | StreamData(_) => unimplemented!(),
+            RpcRes(_) | StreamData(_) | TimebaseData(_) => unimplemented!(),
         };
         let raw_packet = RawPacket {
             packet_type: self.packet_type(),

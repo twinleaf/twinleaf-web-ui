@@ -98,11 +98,11 @@ fn run(opt: Opt) -> Result<()> {
             loop {
                 let packet = device.rx.recv()?;
                 println!("{:?}", packet);
-                use tio_packet::Packet;
-                if let Packet::StreamData(sd) = packet {
-                    // TODO: this is a temporary hack to make debugging easier
-                    println!("\tdata as f32: {:?}", sd.as_f32());
-                }
+                // use tio_packet::Packet;
+                // if let Packet::StreamData(sd) = packet {
+                //     // TODO: this is a temporary hack to make debugging easier
+                //     println!("\tdata as f32: {:?}", sd.as_f32());
+                // }
             }
         }
         Command::Proxy => {
