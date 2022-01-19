@@ -77,7 +77,7 @@ fn run(opt: Opt) -> Result<()> {
             // prints to stdout
             Device::enumerate_devices();
         }
-        // "car-raw" was used when developing to just dump CSV-style data rows to stdout from
+        // "cat-raw" was used when developing to just dump CSV-style data rows to stdout from
         // serial ports (it does not try to parse binary packets)
         Command::CatRaw { uri } => {
             let mut port = serialport::new(uri, 115_200)
