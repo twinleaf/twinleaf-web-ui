@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WebSerial TIO test</title>
+    <meta name="author" content="gilberto@tersatech.com">
+    <meta name="description" content="Proof of concept: interacting with a TIO sensor via WebSerial API.">
+</head>
+<body>
+    <h1>tio-wasm WebSerial Demo</h1>
+    <p>Based on Gilberto's earlier WebSerial demo code.
+    <br>
+    <button id="selectport">Select Port</button>
+    <button id="stopport">Stop</button>
+    <div id="logdata" style="font-family: monospace">
+    </div>
+    <script type="module">
+      import init, { raw_packet_from_bytes, simple_rpc_request_as_bytes, floats_from_raw_stream_packet, simple_rpc_request } from '../pkg/tio_wasm.js';
+
+      const decoder = new TextDecoder();
+
+      function sendAllRpc(writer) {
+          // switch to binary mode, send all channels
+          data = Uint8Array.from([0xC0, 0x05, 0x00, 0x00, 0x00, 0x2E, 0x2F, 0x9A, 0x16, 0xC0]);
+          writer.write(data);
+
+          var data = simple_rpc_request_as_bytes("dev.send_all");
+          writer.write(Uint8Array.from(data));
+          console.log("sent heartbeat (binary mode) and RPC (to stream all data)");
+      }
+
+      function processPacket(pkt) {
+
+          //console.log("raw packet bytes: ", pkt);
+          try {
+            var raw_packet = raw_packet_from_bytes(pkt);
+            console.log(raw_packet);
+          } catch (err) {
+            console.log("packet parsing error: ", err);
+            return;
+          }
+
+          if (raw_packet.packet_type == "StreamZero") {
+            var floats = floats_from_raw_stream_packet(raw_packet);
+            //console.log("DATA:", floats)
+
+            let p = document.createElement("div");
+            p.textContent = "" + floats;
+            let logdata = document.getElementById("logdata");
+            logdata.appendChild(p);
+            if (logdata.childElementCount > 25)
+                logdata.removeChild(logdata.firstChild);
+          }
+      }
+
+      async function run() {
+        await init();
+
+
+        var curPacket = [];
+        var escape = false;
+        var reader = null;
+        var breakout = false;
+        stopport.onclick = function () { reader.cancel(); breakout = true; }
+        selectport.onclick = function () {
+            breakout = false;
+            navigator.serial.requestPort().then(port => {
+                port.open({ baudRate: 115200, bufferSize: 4096 }).then(async () => {
+                    //sendHeartbeat(port.writable.getWriter());
+                    sendAllRpc(port.writable.getWriter());
+                    while (port.readable && !breakout) {
+                        reader = port.readable.getReader();
+                        try {
+                            while (!breakout) {
+                                const { value, done } = await reader.read();
+                                if (done || breakout)
+                                    break;
+
+                                value.forEach(byte => {
+                                    if (byte === 0xC0) {
+                                        // end of packet
+                                        // remove CRC-32 bytes
+                                        curPacket.pop();
+                                        curPacket.pop();
+                                        curPacket.pop();
+                                        curPacket.pop();
+                                        processPacket(Uint8Array.from(curPacket));
+                                        curPacket = [];
+                                        escape = false;
+                                    } else {
+                                        if (escape) {
+                                            escape = false;
+                                            if (byte === 0xDC)
+                                                curPacket.push(0xC0);
+                                            if (byte === 0xDD)
+                                                curPacket.push(0xDB);
+                                        } else {
+                                            if (byte === 0xDB)
+                                                escape = true;
+                                            else
+                                                curPacket.push(byte);
+                                        }
+                                    }
+                                })
+                            }
+                        } catch (error) {
+                            console.log("ERROR:", error);
+                        } finally {
+                            reader.releaseLock();
+                            reader = null;
+                        }
+                    }
+                });
+            });
+        }
+      }
+      run();
+    </script>
+</body>
+</html>
