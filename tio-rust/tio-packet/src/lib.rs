@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 /// This crate provides basic helper types (structs and enums) and parsing routines to work with
 /// Twinleaf binary "TIO" packets. This crate tries to use as few dependencies and standard library
 /// features as possible, which would make it possible to use this code in multiple contexts,
@@ -25,7 +26,7 @@ use std::convert::TryInto;
 /// (aka, all values above 128). There may be a clever way to handle the above-128 cases with a
 /// Rust enum while retaining the `repr(u8)`..
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum PacketType {
     Invalid = 0,
     Log = 1,
@@ -63,7 +64,7 @@ impl PacketType {
 
 /// Simple representation of just the header of a packet (4-bytes). Split out because sometimes we
 /// might want to read just the header before the whole packet (eg, when doing TCP stream framing)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct RawPacketHeader {
     pub packet_type: PacketType,
     pub routing_len: u8,
@@ -89,7 +90,7 @@ impl RawPacketHeader {
 /// "zero copy" parse/encode. This may require lifetime annotations and thinking more about
 /// lifetimes/ownerships, which introduces some complexity; the current implementation is easier to
 /// reason about.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct RawPacket {
     pub packet_type: PacketType,
     pub routing_len: u8,
@@ -106,7 +107,7 @@ impl RawPacket {
         }
         let header = RawPacketHeader::from_bytes(raw[0..4].try_into().unwrap())?;
         if raw.len() != (header.routing_len as usize + header.payload_len as usize + 4) {
-            return Err("packet doesn't declared size".into());
+            return Err("packet does not match declared size".into());
         }
         Ok(RawPacket {
             packet_type: header.packet_type,
@@ -134,7 +135,7 @@ impl RawPacket {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum LogType {
     Critical = 0,
     Error = 1,
@@ -160,7 +161,7 @@ impl LogType {
 /// For embedded use, might be better to take a `&str` (references) and work through the lifetime issues.
 /// Also, not sure if using UTF-8 strings pulls in too much unicode handling code for embedded use;
 /// might want to use ASCII and bytestrings instead?
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct LogMessage {
     pub log_data: u32,
     pub log_type: LogType,
@@ -206,7 +207,7 @@ impl LogMessage {
 //   RPCError -> ErrorResponse
 /// Fairly low-level representation of an RPC request. Might be better to use Rust enum of either
 /// String or u16 to represent the two options of "method as string" vs. "method as number).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct RPCRequest {
     pub req_id: u16,
     pub method_or_len: u16,
@@ -238,7 +239,7 @@ impl RPCRequest {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct RPCResponse {
     pub req_id: u16,
     pub payload: Vec<u8>,
@@ -293,7 +294,7 @@ impl StreamDescription {
 /// "device", and context about types of channels, and contain helpers for resolving timestamps and
 /// detecting missed packets, things like that. Or that could live in `tio`, but then don't have
 /// access to it in WASM context.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct StreamData {
     pub sample_num: u32,
     pub payload: Vec<u8>,
@@ -342,7 +343,7 @@ impl StreamData {
 /// TODO: the simple helper methods of individual types (like "warn()" for a log packet, or "simple
 /// RPC") could be moved to this type; would make constructing high-level structs easier in calling
 /// code.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum Packet {
     Empty,
     Log(LogMessage),
