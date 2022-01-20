@@ -1,0 +1,12 @@
+{
+  "name": "tio-wasm",
+  "version": "0.1.0",
+  "files": [
+    "tio_wasm_bg.wasm",
+    "tio_wasm.js",
+    "tio_wasm.d.ts"
+  ],
+  "module": "tio_wasm.js",
+  "types": "tio_wasm.d.ts",
+  "sideEffects": false
+}
