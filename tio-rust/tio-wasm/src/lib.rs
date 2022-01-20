@@ -1,41 +1,42 @@
-
+use tio_packet::{Packet, PacketType, RPCRequest, RawPacket, StreamData};
 use wasm_bindgen::prelude::*;
-use serde::{Deserialize, Serialize};
-
-/// Functions from Javascript we want to access from Rust (as proof of concept)
-#[wasm_bindgen]
-extern {
-    fn alert(s: &str);
-}
-
-/// Tiny demo of a Rust function calling Javascript (as opposed to Javascript calling Rust
-/// functions)
-#[wasm_bindgen]
-pub fn say_hello() {
-    alert("Hello, Twinleaf, from Rust/WASM!");
-}
-
-
-// TODO:
-// - parse bytes (array) to packet, returning... packet? raw packet? special struct?
-// - parse packet as floats (?)
-// - create simple RPC request (returns bytes?)
-// - create heartbeat request (returns bytes?)
-
-#[derive(Deserialize, Serialize)]
-struct Efficient<'a> {
-    #[serde(with = "serde_bytes")]
-    bytes: &'a [u8],
-
-    #[serde(with = "serde_bytes")]
-    byte_buf: Vec<u8>,
-}
-
 
 #[wasm_bindgen]
-pub fn pass_value_to_js() -> Result<(), JsValue> {
- let some_supported_rust_value = ("Hello, world!", 42);
- let js_value = serde_wasm_bindgen::to_value(&some_supported_rust_value)?;
- // ...
- Ok(())
+/// Takes a pointer to some bytes, returns a RawPacket
+///
+/// Could probably take a pointer to an array of bytes or something like that instead.
+pub fn raw_packet_from_bytes(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    match RawPacket::from_bytes(bytes) {
+        Ok(raw_packet) => Ok(serde_wasm_bindgen::to_value(&raw_packet)?),
+        Err(e) => Err(serde_wasm_bindgen::to_value(&e)?),
+    }
+}
+
+#[wasm_bindgen]
+pub fn floats_from_raw_stream_packet(val: JsValue) -> Result<JsValue, JsValue> {
+    let raw_packet: RawPacket = serde_wasm_bindgen::from_value(val)?;
+    let stream_data = match raw_packet.packet_type {
+        PacketType::StreamZero => StreamData::from_bytes(&raw_packet.payload),
+        _ => {
+            return Err(serde_wasm_bindgen::to_value(
+                &"not a stream0 packet!".to_string(),
+            )?)
+        }
+    };
+    Ok(serde_wasm_bindgen::to_value(&stream_data.as_f32())?)
+}
+
+#[wasm_bindgen]
+pub fn simple_rpc_request_as_bytes(name: String) -> Result<JsValue, JsValue> {
+    let packet = Packet::RpcReq(RPCRequest::named_simple(name));
+    Ok(serde_wasm_bindgen::to_value(&packet.to_bytes().unwrap())?)
+}
+
+#[wasm_bindgen]
+/// This is mostly included as a demo of what a Packet (vs. RawPacket) would look like in
+/// Javascript (aka, as a JsValue)
+pub fn simple_rpc_request(name: String) -> Result<JsValue, JsValue> {
+    Ok(serde_wasm_bindgen::to_value(&Packet::RpcReq(
+        RPCRequest::named_simple(name),
+    ))?)
 }
