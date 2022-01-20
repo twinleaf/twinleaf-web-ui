@@ -43,7 +43,7 @@ least Chrome requires the content type to be set). This worked for bnewbold:
     # start a local web server, from the `tio-wasm/` directory
     python3 -m http.server
 
-    # then open: http://localhost:8000/www/index.html
+    # then open: http://localhost:8000/www/
 
 Links and resources:
 
