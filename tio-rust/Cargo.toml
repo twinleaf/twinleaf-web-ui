@@ -1,5 +1,5 @@
 [workspace]
-members = ["tio-packet", "tio"]
+members = ["tio-packet", "tio", "tio-wasm"]
 
 [profile.release]
 lto = true

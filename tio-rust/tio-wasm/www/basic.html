@@ -1,0 +1,20 @@
+<html>
+<head>
+</head>
+<body>
+  <!-- this is a "no bundler" demo -->
+  <h2>tio-wasm Javascript Demo</h2>
+  <p>Check developer tools for console.log() for output!
+  <script type="module">
+    import init, { raw_packet_from_bytes, simple_rpc_request_as_bytes, floats_from_raw_stream_packet, simple_rpc_request } from '../pkg/tio_wasm.js';
+    async function run() {
+      await init();
+      // as a "full packet" object
+      console.log(simple_rpc_request("dev.send_all"));
+      // as a raw packet
+      console.log(raw_packet_from_bytes(simple_rpc_request_as_bytes("dev.send_all")));
+    }
+    run();
+  </script>
+</body>
+</html>
