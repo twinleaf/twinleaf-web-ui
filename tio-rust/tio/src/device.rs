@@ -10,9 +10,100 @@ use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpStream};
 use std::thread;
 use std::time::Duration;
 use tio_packet::{
-    LogMessage, Packet, PacketType, RPCRequest, RawPacket, RawPacketHeader, StreamData, TimebaseData, SourceData, StreamDescription,
+    LogMessage, Packet, PacketType, RPCRequest, RawPacket, RawPacketHeader, StreamData, TimebaseData, SourceData, StreamDescription, RPCResponseData, TYPES, RPCErrorData,
 };
+use std::collections::HashMap;
+use std::convert::TryInto;
 
+#[derive(Debug, Clone, Serialize)]
+pub enum Value {
+    U8(u8),
+    I8(i8),
+    U16(u16),
+    I16(i16),
+    U32(u32),
+    I32(i32),
+    U64(u64),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+    StringType(String),
+    NoneType(),
+}
+
+fn formatRPCRequest(name: String, routing_bytes: Vec<u8>) -> Vec<u8> {
+     let msg = RPCRequest::named_simple(name).to_bytes();
+     RawPacket{packet_type: PacketType::RPCRequest, routing_len: routing_bytes.len() as u8, payload_len: msg.len() as u16, payload: msg, routing: routing_bytes}.into_bytes()
+}
+
+#[derive(Debug,PartialEq, Clone)]
+pub struct StreamCompilation {
+    column_name: String,
+    timebase_period_us: f32,
+    data_type: TYPES,
+}
+
+#[derive(Debug, Clone)]
+pub struct SensorData {
+    pub stream_compilation: Vec<StreamCompilation>,
+    source_data: HashMap<u16, SourceData>,
+    pub stream_description: StreamDescription,
+    timebase_data: HashMap<u16, TimebaseData>,
+}
+impl Default for SensorData {
+    fn default () -> SensorData {
+        SensorData{source_data: HashMap::new(), timebase_data: HashMap::new(), stream_compilation: Vec::new(), stream_description: StreamDescription::default()}
+    }
+}
+impl SensorData{
+
+    pub fn compile(&mut self) -> () {
+        let mut stream_compilations = Vec::new();
+        let mut source;
+        let timebase;
+        match self.timebase_data.get(&self.stream_description.stream_timebase_id) {
+            Some(existing_timebase) => timebase = existing_timebase,
+            None => panic!("Timebase id not found, try power cycling."),
+        }
+        //calculate period for each source here
+        let mut timebase_period_us = 
+            if timebase.timebase_period_num_us != 0 && timebase.timebase_period_denom_us !=0 {
+                timebase.timebase_period_num_us as f32/timebase.timebase_period_denom_us as f32
+            } else {
+                f32::NAN
+        };
+        timebase_period_us = timebase_period_us*self.stream_description.stream_period as f32;
+        for stream in &self.stream_description.stream_info {
+            match self.source_data.get(&stream.stream_source_id) {
+                Some(existing_source) => source = existing_source,
+                None => panic!("Source id not found, try power cycling."),
+            }
+            timebase_period_us = timebase_period_us*stream.stream_period as f32;
+            //let stream_compilation_info = StreamCompilation{column_names: timebase_period_us: timebase_period_us, data_type: source.source_type};
+            if source.source_column_names.len() > 1 {
+                let column_name = &source.source_name;
+                for name in &source.source_column_names {
+                    //fix cloning issue here to save memory
+                    let stream_compilation = StreamCompilation{column_name: column_name.to_string()+"."+name, timebase_period_us: timebase_period_us, data_type: source.source_type};
+                    stream_compilations.push(stream_compilation);
+                }
+            }
+            else {
+                let column_name = &source.source_name;
+                let stream_compilation = StreamCompilation{column_name: column_name.to_string(), timebase_period_us: timebase_period_us, data_type: source.source_type};
+                stream_compilations.push(stream_compilation);
+            }
+        }
+        self.stream_compilation = stream_compilations;
+
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DataPoint {
+    pub timestamp: f32,
+    pub pointmap: HashMap<String, Value>,
+}
 /// Represents metadata about a device that would be returned by StreamDesc and/or other RPC calls
 /// at device initialization time.
 ///
@@ -47,6 +138,17 @@ impl DeviceInfo {
                 "gyro.y".into(),
                 "gyro.z".into(),
             ],
+        }
+    }
+
+    pub fn new_device(name:String, sensor_data: &SensorData) -> DeviceInfo {
+        let mut channels = Vec::new();
+        for source in &sensor_data.stream_compilation {
+            channels.push(source.column_name.clone());
+        }
+        DeviceInfo {
+            name,
+            channels: channels,
         }
     }
 }
@@ -154,7 +256,168 @@ impl Device {
         }
     }
 
+    pub fn interpret_data(streamdata: StreamData, stream_compilations: &mut Vec<StreamCompilation>) -> DataPoint {
+        let mut datum = DataPoint{timestamp: 0.0, pointmap: HashMap::new()};
+        let mut i = 0;
+        for compilation in stream_compilations{
+            datum.timestamp = compilation.timebase_period_us*streamdata.sample_num as f32;
+            match compilation.data_type{
+                TYPES::U8 => {
+                    if streamdata.payload.len() >= i+1 {
+                        println!("{:?}", compilation.column_name);
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::U8(streamdata.payload[i]));
+                        i = i+1;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::I8 => {
+                    if streamdata.payload.len() >= i+1 {
+                        datum.pointmap.insert(compilation.column_name.clone(),Value::I8(streamdata.payload[i].try_into().unwrap()));
+                        i = i+1;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::U16 => {
+                    if streamdata.payload.len() >= i+2 {
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::U16(u16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap())));
+                        i = i+2;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::I16 => {
+                    if streamdata.payload.len() >= i+2 {
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::I16(i16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap())));
+                        i = i+2;
+                    } else {
+                        break;
+                    }
+                },
+                //no 24 bit type in rust, not sure what to do here, just grab 3 bytes??
+                TYPES::U24 => {}
+                TYPES:: I24 => {}
+                TYPES::U32 => {
+                    if streamdata.payload.len() >= i+4 {
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::U32(u32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        i = i+4;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::I32 => {
+                    if streamdata.payload.len() >= i+4 {
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::I32(i32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        i = i+4;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::U64 => {
+                    if streamdata.payload.len() >= i+8 {
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::U64(u64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        i = i+8;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::I64 => {
+                    if streamdata.payload.len() >= i+8 {
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::I64(i64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        i = i+8;
+                    } else{
+                        break;
+                    }
+                },
+                TYPES::F32 => {
+                    if streamdata.payload.len() >= i+4 {
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::F32(f32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        i = i+4;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::F64 => {
+                    if streamdata.payload.len() >= i+8 {
+                        //println!("column:{:?}, timestamp {:?}, data {:?}", compilation.column_name, compilation.timebase_period_us*streamdata.sample_num as f32, f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap()));
+                        datum.pointmap.insert(compilation.column_name.clone(), Value::F64(f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        i = i+8;
+                    } else {
+                        break;
+                    }
+                },
+                TYPES::StringType => {},
+                TYPES::NoneType => {},
+            };
+            //println!("{:?}: {:?}", compilation, datum.get(compilation).unwrap());
+        }
+        return datum;
+
+    }
+
+    pub fn grab_packet(raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<tio_packet::Packet>, stream_compile: &mut SensorData) -> (){
+        use PacketType::*;
+        let packet = match raw_packet.packet_type {
+            Log => Packet::Log(LogMessage::from_bytes(&raw_packet.payload)),
+            StreamZero => {
+                let datapoint = Device::interpret_data(StreamData::from_bytes(&raw_packet.payload), &mut stream_compile.stream_compilation);
+                println!("{:?}", datapoint);
+                Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
+            }
+            Timebase => {
+                let timebase = TimebaseData::from_bytes(&raw_packet.payload);
+                stream_compile.timebase_data.insert(timebase.timebase_id,timebase);
+                Packet::TimebaseData(TimebaseData::from_bytes(
+                    &raw_packet.payload))
+            }
+            Source => {
+                let source = SourceData::from_bytes(&raw_packet.payload);
+                stream_compile.source_data.insert(source.source_id, source);
+                Packet::SourceData(SourceData::from_bytes(
+                    &raw_packet.payload))
+                
+            }
+            // TODO: should we bother returning heartbeat messages? just drop them
+            // here?
+            Heartbeat => Packet::Empty,
+            // TODO: actually parse/handle these
+            Stream => {
+                stream_compile.stream_description = StreamDescription::from_bytes(
+                    &raw_packet.payload);
+                stream_compile.compile();
+                Packet::StreamDescription(StreamDescription::from_bytes(
+                    &raw_packet.payload))
+                }
+            RPCResponse => {
+                println!("Channeling response");
+                Packet::RPCResponseData(RPCResponseData::from_bytes(
+                    &raw_packet.payload))
+                }
+
+            RPCError => {
+                println!("RPCERROR");
+                Packet::RPCErrorData(RPCErrorData::from_bytes(&raw_packet.payload))}
+
+            Text | Invalid | RPCRequest => {
+                println!(
+                    "ignoring unhandled packet type: {:?}",
+                    raw_packet.packet_type
+                );
+                Packet::Empty
+            }
+        };
+
+        match packet {
+            Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) | Packet::SourceData(_) | Packet::StreamDescription(_) | Packet::RPCResponseData(_) | Packet::RPCErrorData(_)=> {
+                rx_send.send(packet).unwrap()
+            }
+            _ => (),
+        };
+    }
+
     fn connect_tcp(uri: String) -> Result<Device> {
+        let mut stream_compile = SensorData::default();
         let host_port = (&uri)[6..].to_string();
         println!("connecting to: {}", host_port);
         let mut stream = TcpStream::connect(host_port)?;
@@ -163,6 +426,14 @@ impl Device {
         let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) =
             channel::bounded(0);
         let (rx_sender, rx_receiver) = channel::bounded(0);
+        let req = formatRPCRequest("dev.name".to_string(), Vec::new());
+        stream.write(&req).unwrap();
+        //let req = Packet::RpcReq(RPCRequest::named_simple("dev.name".to_string()));
+        //let msg = req.to_bytes().unwrap();
+        println!("Right here");
+        //tx_sender.send(req).unwrap();
+        //stream.write(&msg).unwrap();
+        println!("Past that");
         thread::spawn(move || {
             let mut header_buf = [0; 4];
             let mut packet_buf = [0; 512];
@@ -191,42 +462,7 @@ impl Device {
                                 let raw_packet = RawPacket::from_bytes(&packet_buf[..total_len])
                                     .or(Err(anyhow!("parsing raw packet from bytes")))
                                     .unwrap();
-                                use PacketType::*;
-                                let packet = match raw_packet.packet_type {
-                                    Log => Packet::Log(LogMessage::from_bytes(&raw_packet.payload)),
-                                    StreamZero => Packet::StreamData(StreamData::from_bytes(
-                                        &raw_packet.payload,
-                                    )),
-                                    Timebase => {
-                                    Packet::TimebaseData(TimebaseData::from_bytes(
-                                        &raw_packet.payload))
-                                    }
-                                    Source => {
-                                        Packet::SourceData(SourceData::from_bytes(
-                                            &raw_packet.payload))
-                                        }
-
-                                    Stream => {
-                                        Packet::StreamDescription(StreamDescription::from_bytes(
-                                            &raw_packet.payload))
-                                        }
-                                    Heartbeat => Packet::Empty,
-                                    // TODO: actually parse/handle these
-                                    Text | RPCResponse | Invalid
-                                    | RPCRequest | RPCError => {
-                                        println!(
-                                            "ignoring unhandled packet type: {:?}",
-                                            raw_packet.packet_type
-                                        );
-                                        Packet::Empty
-                                    }
-                                };
-                                match packet {
-                                    Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) | Packet::SourceData(_) | Packet::StreamDescription(_) => {
-                                        rx_sender.send(packet).unwrap()
-                                    }
-                                    _ => (),
-                                };
+                                Device::grab_packet(raw_packet, &rx_sender, &mut stream_compile);
                             }
                             Err(e) => Err(e).unwrap(),
                         }
@@ -248,6 +484,7 @@ impl Device {
 
     /// Opening the serial port file is blocking in current thread (but expected to be immediate?)
     fn connect_serial(uri: String) -> Result<Device> {
+        let mut stream_compile = SensorData::default();
         let path = (&uri)[9..].to_string();
         println!("connecting to: {}", path);
         let mut port = serialport::new(path, 115_200)
@@ -289,6 +526,7 @@ impl Device {
                     Ok(_packet) => {
                         // TODO: send this packet down the pipe as bytes
                         //stream.write(packet.as_bytes());
+                        //buf_port.write_all(&tio_slip_encode(&msg));
                         continue;
                     }
                     Err(channel::TryRecvError::Empty) => (),
@@ -300,7 +538,6 @@ impl Device {
                 match buf_port.read_until(0xC0, &mut slip_buf) {
                     Ok(0) | Ok(1) => (),
                     Ok(n) => {
-                        //println!("  got {} bytes: {:?}", n, &slip_buf[0..n]);
                         let raw = match tio_slip_decode(&slip_buf[..n]) {
                             Ok(r) => r,
                             Err(e) => {
@@ -311,43 +548,7 @@ impl Device {
                         let raw_packet = RawPacket::from_bytes(&raw)
                             .or(Err(anyhow!("parsing raw packet from bytes")))
                             .unwrap();
-                        use PacketType::*;
-                        let packet = match raw_packet.packet_type {
-                            Log => Packet::Log(LogMessage::from_bytes(&raw_packet.payload)),
-                            StreamZero => {
-                                Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
-                            }
-                            Timebase => {
-                                Packet::TimebaseData(TimebaseData::from_bytes(
-                                    &raw_packet.payload))
-                            }
-                            Source => {
-                                Packet::SourceData(SourceData::from_bytes(
-                                    &raw_packet.payload))
-                            }
-                            // TODO: should we bother returning heartbeat messages? just drop them
-                            // here?
-                            Heartbeat => Packet::Empty,
-                            // TODO: actually parse/handle these
-                            Stream => {
-                                Packet::StreamDescription(StreamDescription::from_bytes(
-                                    &raw_packet.payload))
-                                }
-                            Text | RPCResponse | Invalid | RPCRequest
-                            | RPCError => {
-                                println!(
-                                    "ignoring unhandled packet type: {:?}",
-                                    raw_packet.packet_type
-                                );
-                                Packet::Empty
-                            }
-                        };
-                        match packet {
-                            Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) | Packet::SourceData(_) | Packet::StreamDescription(_) => {
-                                rx_sender.send(packet).unwrap()
-                            }
-                            _ => (),
-                        };
+                        Device::grab_packet(raw_packet, &rx_sender, &mut stream_compile);
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
                     Err(e) => Err(e).unwrap(),

@@ -95,11 +95,13 @@ fn run(opt: Opt) -> Result<()> {
         Command::Cat { uri } => {
             let device = Device::connect(uri)?;
             println!("device: {:?}", device.info);
+            // form rpc request packet and send with dev.name as payload and transmit
+            // device.tx 
             loop {
                 let packet = device.rx.recv()?;
                 println!("{:?}", packet);
-                // use tio_packet::Packet;
-                // if let Packet::StreamData(sd) = packet {
+                // use tio_packet::Packet
+                // ]if let Packet::StreamData(sd) = packet {
                 //     // TODO: this is a temporary hack to make debugging easier
                 //     println!("\tdata as f32: {:?}", sd.as_f32());
                 // }

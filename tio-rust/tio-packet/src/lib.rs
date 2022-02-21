@@ -27,6 +27,49 @@ use std::str::from_utf8;
 /// Rust enum while retaining the `repr(u8)`..
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TYPES {
+    U8 = 16,
+    I8 = 17,
+    U16 = 32,
+    I16 = 33,
+    U24 = 48,
+    I24 = 49,
+    U32 = 64,
+    I32 = 65,
+    U64 = 128,
+    I64 = 129,
+    F32 = 66,
+    F64 = 130,
+    StringType = 3,
+    NoneType = 0,
+}
+impl TYPES {
+    pub fn from_u8(raw: u8) -> Result<TYPES, String> {
+        use TYPES::*;
+        match raw {
+            // TODO: partial enumeration
+            16 => Ok(U8),
+            17 => Ok(I8),
+            32 => Ok(U16),
+            33 => Ok(I16),
+            48 => Ok(U24),
+            49 => Ok(I24),
+            64 => Ok(U32),
+            65 => Ok(I32),
+            128 => Ok(U64),
+            129 => Ok(I64),
+            66 => Ok(F32),
+            130 => Ok(F64),
+            3 => Ok(StringType),
+            0 => Ok(NoneType),
+            _ => Err("unimplmented TYPE".into()),
+        }
+    }
+}
+
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketType {
     Invalid = 0,
     Log = 1,
@@ -337,31 +380,101 @@ impl StreamData {
     }
 }
 
+#[derive(Debug,PartialEq, Clone)]
+pub struct StreamInfo {
+    pub stream_source_id: u16,
+    stream_flags: u16,
+    pub stream_period: u32,
+    stream_offset: u32,
+}
+impl StreamInfo{
+    pub fn load_stream_info(raw: &[u8], stream_component: usize) -> StreamInfo{
+        StreamInfo{
+            stream_source_id: u16::from_le_bytes(raw[24+stream_component*12..26+stream_component*12].try_into().unwrap()),
+            stream_flags: u16::from_le_bytes(raw[26+stream_component*12..28+stream_component*12].try_into().unwrap()),
+            stream_period: u32::from_le_bytes(raw[28+stream_component*12..32+stream_component*12].try_into().unwrap()),
+            stream_offset: u32::from_le_bytes(raw[32+stream_component*12..36+stream_component*12].try_into().unwrap()),
+        }
+    }
+}
+
+
 #[derive(Debug,PartialEq)]
+pub struct RPCResponseData {
+    pub request_id: u16,
+    pub reply_payload: Vec<u8>,
+}
+impl RPCResponseData {
+    pub fn from_bytes(raw: &[u8]) -> RPCResponseData {
+
+        RPCResponseData {
+            request_id: u16::from_le_bytes(raw[0..2].try_into().unwrap()),
+            reply_payload: raw[2..].to_vec(), 
+        }
+    }
+}
+
+#[derive(Debug,PartialEq)]
+pub struct RPCErrorData {
+    pub request_id: u16,
+    pub error_code: u16,
+    pub error_payload: Vec<u8>
+}
+impl RPCErrorData {
+    pub fn from_bytes(raw: &[u8]) -> RPCErrorData {
+
+        RPCErrorData {
+            request_id: u16::from_le_bytes(raw[0..2].try_into().unwrap()),
+            error_code: u16::from_le_bytes(raw[2..4].try_into().unwrap()),
+            error_payload: raw[4..].to_vec(), 
+        }
+    }
+}
+
+#[derive(Debug,PartialEq, Clone)]
 pub struct StreamDescription {
-    stream_id: u16,
-    stream_timebase_id:u16,
-    stream_period:u32,
+    pub stream_id: u16,
+    pub stream_timebase_id:u16,
+    pub stream_period:u32,
     stream_offset:u32,
     stream_sample_number: u64,
     stream_total_components:u16,
     stream_flags:u16,
+    pub stream_info: Vec<StreamInfo>,
+}
+impl Default for StreamDescription {
+    fn default () -> StreamDescription {
+        StreamDescription{stream_id: 0, stream_timebase_id: 0, stream_period: 0, stream_offset: 0, stream_sample_number: 0, stream_total_components:0, stream_flags: 0, stream_info: Vec::new(),}
+    }
 }
 impl StreamDescription {
     pub fn from_bytes(raw: &[u8]) -> StreamDescription {
+        let stream_total_components = u16::from_le_bytes(raw[20 .. 22].try_into().unwrap());
+        let stream_id = u16::from_le_bytes(raw[0 .. 2].try_into().unwrap());
+        let mut streams = Vec::new();
+        if stream_id == 0{
+            if raw.len() > 24{
+                for stream_component in 0..stream_total_components {
+                    let new_stream = StreamInfo::load_stream_info(raw, stream_component as usize);
+                    streams.push(new_stream);
+                }
+            }
+        }
 
         StreamDescription {
-            stream_id: u16::from_le_bytes(raw[0 .. 2].try_into().unwrap()),
+            stream_id: stream_id,
             stream_timebase_id: u16::from_le_bytes(raw[2 .. 4].try_into().unwrap()),
             stream_period: u32::from_le_bytes(raw[4 .. 8].try_into().unwrap()),
             stream_offset: u32::from_le_bytes(raw[8 .. 12].try_into().unwrap()),
             stream_sample_number: u64::from_le_bytes(raw[12 .. 20].try_into().unwrap()),
-            stream_total_components: u16::from_le_bytes(raw[20 .. 22].try_into().unwrap()),
+            stream_total_components: stream_total_components,
             stream_flags: u16::from_le_bytes(raw[22 .. 24].try_into().unwrap()),   
+            stream_info: streams,
         }
     }
 }
-#[derive(Debug,PartialEq)]
+
+#[derive(Debug,PartialEq, Clone)]
 pub struct TimebaseData {
     pub timebase_id: u16,
     pub timebase_source: u8,
@@ -375,29 +488,6 @@ pub struct TimebaseData {
 }
 
 impl TimebaseData {
-
-    pub fn timebase_derived_values(raw: &[u8]) -> Vec<f32> {
-        // probably could make separate functions for the two values but I am not sure how to efficiently do that
-        let mut timebase_vec = Vec::new();
-        let timebase_period_num_us = u32::from_le_bytes(raw[12..16].try_into().unwrap());
-        let timebase_period_denom_us = u32::from_le_bytes(raw[16..20].try_into().unwrap());
-        let timebase_period_us = 
-            if timebase_period_num_us != 0 && timebase_period_denom_us !=0 {
-                timebase_period_num_us as f32/timebase_period_denom_us as f32
-            } else {
-                f32::NAN
-            };
-        let timebase_fs = 
-            if timebase_period_num_us != 0 && timebase_period_denom_us !=0 {
-                    1000000./timebase_period_us
-            } else {
-                    f32::NAN
-            };
-        timebase_vec.push(timebase_period_us);
-        timebase_vec.push(timebase_fs);
-        return timebase_vec;
-    }
-
     pub fn from_bytes(raw: &[u8]) -> TimebaseData {
         
         TimebaseData {
@@ -415,7 +505,7 @@ impl TimebaseData {
     }
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq, Clone)]
 pub struct SourceData {
     pub source_id: u16,
     pub source_timebase_id: u16,
@@ -424,16 +514,14 @@ pub struct SourceData {
     pub source_fmt: u32,
     pub source_flags: u16,
     pub source_channels: u16,
-    pub source_type: u8,
+    pub source_type: TYPES,
     pub source_name: String,
     pub source_column_names: Vec<String>,
     pub source_title: String,
     pub source_units: String,
-    pub source_other_desc: Vec<String>,
+    pub source_other_desc: String,
 }
-
 impl SourceData {
-
     pub fn from_bytes(raw: &[u8]) -> SourceData {
         let description = from_utf8(raw[21..].try_into().unwrap()).unwrap().split("\t");
         let description_vec = description.collect::<Vec<&str>>();
@@ -461,17 +549,9 @@ impl SourceData {
 
         let source_other_desc = 
             if description_vec.len() >= 5{
-                // probably a better way to go from slice to vector of Strings but I am not sure how
-                let mut vec = Vec::new();
-                let ans = description_vec[4..].to_vec();
-                for text in ans {
-                    vec.push(text.to_string());
-                }
-                vec
+                description_vec[4..].to_vec().join("")
             } else {
-                let mut vec = Vec::new();
-                vec.push("".to_string());
-                vec
+                "".to_string()
             };
 
         SourceData {
@@ -482,7 +562,7 @@ impl SourceData {
             source_fmt: u32::from_le_bytes(raw[12..16].try_into().unwrap()),
             source_flags: u16::from_le_bytes(raw[16..18].try_into().unwrap()),
             source_channels: u16::from_le_bytes(raw[18..20].try_into().unwrap()),
-            source_type: raw[21],
+            source_type: TYPES::from_u8(raw[20]).unwrap(),
             source_name: description_vec[0].to_string(),
             source_column_names: source_column_names,
             source_title: source_title,
@@ -504,12 +584,15 @@ pub enum Packet {
     Empty,
     Log(LogMessage),
     RpcReq(RPCRequest),
-    RpcRes(RPCResponse),
+    //RpcRes(RPCResponse),
     //StreamDesc(StreamDescription),
     StreamData(StreamData),
     TimebaseData(TimebaseData),
     SourceData(SourceData),
     StreamDescription(StreamDescription),
+    RPCResponseData(RPCResponseData),
+    RPCErrorData(RPCErrorData)
+
 }
 impl Packet {
     pub fn packet_type(&self) -> PacketType {
@@ -517,11 +600,13 @@ impl Packet {
             Packet::Empty => PacketType::Heartbeat,
             Packet::Log(_) => PacketType::Log,
             Packet::RpcReq(_) => PacketType::RPCRequest,
-            Packet::RpcRes(_) => PacketType::RPCResponse,
+            //Packet::RpcRes(_) => PacketType::RPCResponse,
             Packet::StreamData(_) => PacketType::StreamZero,
             Packet::TimebaseData(_) => PacketType::Timebase,
             Packet::SourceData(_) => PacketType::Source,
             Packet::StreamDescription(_) => PacketType::Stream,
+            Packet::RPCResponseData(_) => PacketType::RPCResponse,
+            Packet::RPCErrorData(_) => PacketType::RPCError,
         }
     }
 
@@ -531,7 +616,7 @@ impl Packet {
             Empty => vec![],
             Log(msg) => msg.to_bytes(),
             RpcReq(req) => req.to_bytes(),
-            RpcRes(_) | StreamData(_) | TimebaseData(_) | SourceData(_) | StreamDescription(_) => unimplemented!(),
+            StreamData(_) | TimebaseData(_) | SourceData(_) | StreamDescription(_) | RPCResponseData(_) | RPCErrorData(_) => unimplemented!(),
         };
         let raw_packet = RawPacket {
             packet_type: self.packet_type(),
