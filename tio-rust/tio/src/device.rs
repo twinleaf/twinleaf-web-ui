@@ -31,9 +31,100 @@ pub enum Value {
     NoneType(),
 }
 
-fn formatRPCRequest(name: String, routing_bytes: Vec<u8>) -> Vec<u8> {
-     let msg = RPCRequest::named_simple(name).to_bytes();
-     RawPacket{packet_type: PacketType::RPCRequest, routing_len: routing_bytes.len() as u8, payload_len: msg.len() as u16, payload: msg, routing: routing_bytes}.into_bytes()
+// fn format_rpc_request(name: String, routing_bytes: Vec<u8>) -> Vec<u8> {
+//      let rpc = RPCRequest::named_simple(name);
+//      let msg = rpc.to_bytes();
+//      RawPacket{packet_type: PacketType::RPCRequest, routing_len: routing_bytes.len() as u8, payload_len: msg.len() as u16, payload: msg, routing: routing_bytes}.into_bytes()
+// }
+
+fn packet_to_raw(packet: Packet, routing_bytes: Vec<u8>) -> RawPacket {
+    let msg;
+    match packet {
+        Packet::RpcReq(rpc) => {msg = rpc.to_bytes()}
+        // fix error handling here
+        _other => {msg = Vec::new()}
+    };
+    RawPacket{packet_type: PacketType::RPCRequest, routing_len: routing_bytes.len() as u8, payload_len: msg.len() as u16, payload: msg, routing: routing_bytes}
+}
+
+#[derive(Debug)]
+pub enum Replies {
+    Response(Vec<u8>),
+    Error(String)
+}
+
+#[derive(Debug)]
+pub enum ErrorCode {
+    NoErr = 0,
+    Undefined = 1,
+    NotFound = 2,
+    Malformed = 3,
+    ArgsSize = 4,
+    Invalid = 5,
+    ReadOnly = 6,
+    WriteOnly = 7,
+    Timeout = 8,
+    Busy = 9,
+    State = 10,
+    Load = 11,
+    LoadRpc = 12,
+    Save = 13,
+    SaveWr = 14,
+    Internal = 15,
+    NoBufs = 16,
+    Range = 17,
+    User = 18,
+}
+impl ErrorCode {
+    pub fn from_u16(raw: u16) -> Result<ErrorCode, String> {
+        use ErrorCode::*;
+        match raw {
+            0 => Ok(NoErr),
+            1 => Ok(Undefined),
+            2 => Ok(NotFound),
+            3 => Ok(Malformed),
+            4 => Ok(ArgsSize),
+            5 => Ok(Invalid),
+            6 => Ok(ReadOnly),
+            7 => Ok(WriteOnly),
+            8 => Ok(Timeout),
+            9 => Ok(Busy),
+            10 => Ok(State),
+            11 => Ok(Load),
+            12 => Ok(LoadRpc),
+            13 => Ok(Save),
+            14 => Ok(SaveWr),
+            15 => Ok(Internal),
+            16 => Ok(NoBufs),
+            17 => Ok(Range),
+            18 => Ok(User),
+            _ => Err("unimplmented Error Code".into()),
+        }
+    }
+    pub fn give_message(error_code: ErrorCode) -> String {
+        use ErrorCode::*;
+        match error_code {
+            NoErr => "No error".to_string(),
+            Undefined => "Generic error".to_string(),
+            NotFound => "Method not found".to_string(),
+            Malformed => "Malformed request".to_string(),
+            ArgsSize => "Arguments wrong size".to_string(),
+            Invalid => "Invalid arguments".to_string(),
+            ReadOnly => "Attempted to assign read-only value".to_string(),
+            WriteOnly => "Attempted to read write-only value".to_string(),
+            Timeout => "Internal timeout".to_string(),
+            Busy => "Unable to fulfill request at the time - try again later".to_string(),
+            State => "Device state incompatible with requested action".to_string(),
+            Load => "Error when reading configuration from EEPROM".to_string(),
+            LoadRpc => "Error applying configuration from EEPRON".to_string(),
+            Save => "Error when serializing persistant configuration".to_string(),
+            SaveWr => "Error when writing configuration to EEPROM".to_string(),
+            Internal => "Internal firmware error".to_string(),
+            NoBufs => "Unable to allocate buffers needed to perform operation".to_string(),
+            Range => "Range error".to_string(),
+            User => "User defined error".to_string(),
+        }
+    }
 }
 
 #[derive(Debug,PartialEq, Clone)]
@@ -104,167 +195,41 @@ pub struct DataPoint {
     pub timestamp: f32,
     pub pointmap: HashMap<String, Value>,
 }
-/// Represents metadata about a device that would be returned by StreamDesc and/or other RPC calls
-/// at device initialization time.
-///
-/// TODO: should this live in `tio-packet`?
-#[derive(Debug, Serialize, Clone)]
-pub struct DeviceInfo {
-    pub name: String,
-    pub channels: Vec<String>,
-    // TODO: channel data types? rate? etc
-    // TODO: firmware version?
-    // TODO: hw version?
-    // TODO: hw serial number?
-}
 
-impl DeviceInfo {
-    /// This is a hack to generate mock info for a vector magnetometer device.
-    ///
-    /// TODO: not even sure these channel names/mappings are correct. method name should be
-    /// different, and/or probably shouldn't live as a method on the DeviceInfo struct. Could be
-    /// part of the dummy device creation code?
-    pub fn new_vmr(name: String) -> DeviceInfo {
-        DeviceInfo {
-            name,
-            channels: vec![
-                "gmr.x".into(),
-                "gmr.y".into(),
-                "gmr.z".into(),
-                "accel.x".into(),
-                "accel.y".into(),
-                "accel.z".into(),
-                "gyro.x".into(),
-                "gyro.y".into(),
-                "gyro.z".into(),
-            ],
-        }
-    }
-
-    pub fn new_device(name:String, sensor_data: &SensorData) -> DeviceInfo {
-        let mut channels = Vec::new();
-        for source in &sensor_data.stream_compilation {
-            channels.push(source.column_name.clone());
-        }
-        DeviceInfo {
-            name,
-            channels: channels,
-        }
-    }
-}
-
-/// Handle containing context about an active connection to a device. The connection type is
-/// abstracted away. Actual device communication happens in threads, with communication via
-/// channels. When this struct is "dropped" (that is, removed from memory and deconstructed), the
-/// channels and thus threads should shut down automatically, but this hasn't been tested.
-///
-/// The initialization process involves some communication with the device, to put it in binary
-/// mode, and potentially to read out the stream descriptions and other device info (eg, firmware
-/// version).
-///
-/// Most of the backends have a common structure: an I/O thread handles reading and writing TIO
-/// packets, and communicates back bi-directionally via channels. The crossbeam channel
-/// implementation (a dependecy) is used, which is a robust and popular alternative to the standard
-/// library "mpsc" channel implmentation, which has some quirks (there has been discussion of
-/// adding the crossbeam channel implementation to the rust standard library). The semantics are
-/// similar to golang channels, and not too different from Python Queues for concurrency control.
-/// Channels have types, can be bounded or unbounded, and reading/writing can be synchronous
-/// (blocking) or asynchronous. Generally, the I/O thread does reads from backend file descriptors
-/// (sockets or serial port file) with a timeout; blocking writes; and polls the "tx" (write to
-/// device) channel asynchronously. For future robustness, bounded channels should be used to
-/// prevent messages from piling up (memory leak), and efforts should be made to handle situations
-/// like device disconnects (I/O thread should shut down, dropping the "rx" channel, which results
-/// in an error when reading for new packets; currently applications would have to handle this
-/// themselves).
-///
-/// One possible change/improvement to this API would be to have two "rx" channels: one for
-/// stream/broadcast messages (like stream data or log messages), and one for synchronous messages
-/// (like RPC responses and RPC errors). This would make application logic of doing RPCs easier:
-/// just write a message, then poll for a result, while other message types spool up in the stream
-/// "rx" channel.
 #[derive(Debug)]
-pub struct Device {
-    pub uri: String,
-    pub info: DeviceInfo,
-    pub rx: channel::Receiver<Packet>,
-    pub tx: channel::Sender<Packet>,
+pub struct UpdatingInformation{
+    pub rpc_hash: HashMap<u16, Packet>,
+    pub sensor_data: SensorData,
+    pub data_point: DataPoint,
 }
-
-impl Device {
-    /// Creates a list of possible devices to connect to. Mostly hunting for serial ports, but also
-    /// checks for a local TCP proxy (on the default port) and includes a dummy device. In the
-    /// future could do mDNS discovery.
-    pub fn enumerate_devices() -> Vec<String> {
-        println!("dummy://dummy");
-        let mut devices = vec!["dummy://dummy".to_string()];
-        // see if proxy is running locally
-        if let Ok(conn) = TcpStream::connect_timeout(
-            &SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 7855),
-            Duration::from_millis(100),
-        ) {
-            conn.shutdown(Shutdown::Both).unwrap();
-            println!("tcp://localhost:7855");
-            devices.push("tcp://localhost:7855".to_string());
-        }
-        if let Ok(ports) = serialport::available_ports() {
-            for p in ports.iter() {
-                match &p.port_type {
-                    SerialPortType::UsbPort(info) => {
-                        println!(
-                            "serial://{}   [USB VID:{:04x} PID:{:04x} NUM:{}]",
-                            p.port_name,
-                            info.vid,
-                            info.pid,
-                            info.serial_number.as_ref().map_or("", String::as_str)
-                        );
-                    }
-                    SerialPortType::BluetoothPort => {
-                        println!("serial://{}   [Bluetooth]", p.port_name);
-                    }
-                    SerialPortType::PciPort => {
-                        println!("serial://{}   [PCI]", p.port_name);
-                    }
-                    SerialPortType::Unknown => {
-                        println!("serial://{}", p.port_name);
-                    }
-                }
-                devices.push(format!("serial://{}", p.port_name));
-            }
-        } else {
-            // TODO: real error handling (or at least warning)
-            println!("Error fetching serial ports");
-        }
-        devices
+impl Default for UpdatingInformation{
+    fn default() -> UpdatingInformation {
+        UpdatingInformation{rpc_hash: HashMap::new(), sensor_data: SensorData::default(), data_point: DataPoint{timestamp: 0 as f32, pointmap: HashMap::new()}}
     }
-
-    /// Generic method to connect to a device, supporting multiple connection types/schemes.
-    ///
-    /// Once established, I/O happens in threads, but the initial connection is usually blocking in
-    /// the current thread.
-    pub fn connect(uri: String) -> Result<Device> {
-        if uri.starts_with("serial://") {
-            println!("calling connect_serial {}", uri);
-            Device::connect_serial(uri)
-        } else if uri.starts_with("tcp://") {
-            println!("calling connect_tcp {}", uri);
-            Device::connect_tcp(uri)
-        } else if uri.starts_with("dummy://") {
-            println!("calling connect_dummy {}", uri);
-            Device::connect_dummy()
-        } else {
-            Err(anyhow!("unsupported URI schema: {}", uri))
+}
+impl UpdatingInformation {
+    pub fn interpret_packet(&mut self, packet: Packet) -> (){
+        use Packet::*;
+        match packet.clone() {
+            StreamData(sd) => {self.interpret_datapoint(sd);}
+            TimebaseData(sd) => {self.sensor_data.timebase_data.insert(sd.timebase_id,sd);}
+            SourceData(sd) => {self.sensor_data.source_data.insert(sd.source_id, sd);}
+            StreamDescription(sd) => {self.sensor_data.stream_description = sd;
+                self.sensor_data.compile();}
+            RPCResponseData(sd) => {
+                self.rpc_hash.insert(sd.request_id, packet);}
+            RPCErrorData(sd) => {self.rpc_hash.insert(sd.request_id, packet);}//Replies::Error(ErrorCode::give_message(ErrorCode::from_u16(sd.error_code).unwrap())));}
+            _ => {}
         }
     }
-
-    pub fn interpret_data(streamdata: StreamData, stream_compilations: &mut Vec<StreamCompilation>) -> DataPoint {
+    pub fn interpret_datapoint(&mut self, streamdata: StreamData) -> () {
         let mut datum = DataPoint{timestamp: 0.0, pointmap: HashMap::new()};
         let mut i = 0;
-        for compilation in stream_compilations{
+        for compilation in &self.sensor_data.stream_compilation{
             datum.timestamp = compilation.timebase_period_us*streamdata.sample_num as f32;
             match compilation.data_type{
                 TYPES::U8 => {
                     if streamdata.payload.len() >= i+1 {
-                        println!("{:?}", compilation.column_name);
                         datum.pointmap.insert(compilation.column_name.clone(), Value::U8(streamdata.payload[i]));
                         i = i+1;
                     } else {
@@ -352,88 +317,227 @@ impl Device {
             };
             //println!("{:?}: {:?}", compilation, datum.get(compilation).unwrap());
         }
-        return datum;
+        self.data_point =  datum;
 
     }
+}
+/// Represents metadata about a device that would be returned by StreamDesc and/or other RPC calls
+/// at device initialization time.
+///
+/// TODO: should this live in `tio-packet`?
+#[derive(Debug, Serialize, Clone)]
+pub struct DeviceInfo {
+    pub name: String,
+    pub channels: Vec<String>,
+    // TODO: channel data types? rate? etc
+    // TODO: firmware version?
+    // TODO: hw version?
+    // TODO: hw serial number?
+}
 
-    pub fn grab_packet(raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<tio_packet::Packet>, stream_compile: &mut SensorData) -> (){
-        use PacketType::*;
-        let packet = match raw_packet.packet_type {
-            Log => Packet::Log(LogMessage::from_bytes(&raw_packet.payload)),
-            StreamZero => {
-                let datapoint = Device::interpret_data(StreamData::from_bytes(&raw_packet.payload), &mut stream_compile.stream_compilation);
-                println!("{:?}", datapoint);
-                Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
-            }
-            Timebase => {
-                let timebase = TimebaseData::from_bytes(&raw_packet.payload);
-                stream_compile.timebase_data.insert(timebase.timebase_id,timebase);
-                Packet::TimebaseData(TimebaseData::from_bytes(
-                    &raw_packet.payload))
-            }
-            Source => {
-                let source = SourceData::from_bytes(&raw_packet.payload);
-                stream_compile.source_data.insert(source.source_id, source);
-                Packet::SourceData(SourceData::from_bytes(
-                    &raw_packet.payload))
-                
-            }
-            // TODO: should we bother returning heartbeat messages? just drop them
-            // here?
-            Heartbeat => Packet::Empty,
-            // TODO: actually parse/handle these
-            Stream => {
-                stream_compile.stream_description = StreamDescription::from_bytes(
-                    &raw_packet.payload);
-                stream_compile.compile();
-                Packet::StreamDescription(StreamDescription::from_bytes(
-                    &raw_packet.payload))
-                }
-            RPCResponse => {
-                println!("Channeling response");
-                Packet::RPCResponseData(RPCResponseData::from_bytes(
-                    &raw_packet.payload))
-                }
-
-            RPCError => {
-                println!("RPCERROR");
-                Packet::RPCErrorData(RPCErrorData::from_bytes(&raw_packet.payload))}
-
-            Text | Invalid | RPCRequest => {
-                println!(
-                    "ignoring unhandled packet type: {:?}",
-                    raw_packet.packet_type
-                );
-                Packet::Empty
-            }
-        };
-
-        match packet {
-            Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) | Packet::SourceData(_) | Packet::StreamDescription(_) | Packet::RPCResponseData(_) | Packet::RPCErrorData(_)=> {
-                rx_send.send(packet).unwrap()
-            }
-            _ => (),
-        };
+impl DeviceInfo {
+    /// This is a hack to generate mock info for a vector magnetometer device.
+    ///
+    /// TODO: not even sure these channel names/mappings are correct. method name should be
+    /// different, and/or probably shouldn't live as a method on the DeviceInfo struct. Could be
+    /// part of the dummy device creation code?
+    pub fn new_vmr(name: String) -> DeviceInfo {
+        DeviceInfo {
+            name,
+            channels: vec![
+                "gmr.x".into(),
+                "gmr.y".into(),
+                "gmr.z".into(),
+                "accel.x".into(),
+                "accel.y".into(),
+                "accel.z".into(),
+                "gyro.x".into(),
+                "gyro.y".into(),
+                "gyro.z".into(),
+            ],
+        }
     }
 
+    pub fn new_device(name:String, sensor_data: &SensorData) -> DeviceInfo {
+        let mut channels = Vec::new();
+        for source in &sensor_data.stream_compilation {
+            channels.push(source.column_name.clone());
+        }
+        DeviceInfo {
+            name,
+            channels: channels,
+        }
+    }
+}
+
+/// Handle containing context about an active connection to a device. The connection type is
+/// abstracted away. Actual device communication happens in threads, with communication via
+/// channels. When this struct is "dropped" (that is, removed from memory and deconstructed), the
+/// channels and thus threads should shut down automatically, but this hasn't been tested.
+///
+/// The initialization process involves some communication with the device, to put it in binary
+/// mode, and potentially to read out the stream descriptions and other device info (eg, firmware
+/// version).
+///
+/// Most of the backends have a common structure: an I/O thread handles reading and writing TIO
+/// packets, and communicates back bi-directionally via channels. The crossbeam channel
+/// implementation (a dependecy) is used, which is a robust and popular alternative to the standard
+/// library "mpsc" channel implmentation, which has some quirks (there has been discussion of
+/// adding the crossbeam channel implementation to the rust standard library). The semantics are
+/// similar to golang channels, and not too different from Python Queues for concurrency control.
+/// Channels have types, can be bounded or unbounded, and reading/writing can be synchronous
+/// (blocking) or asynchronous. Generally, the I/O thread does reads from backend file descriptors
+/// (sockets or serial port file) with a timeout; blocking writes; and polls the "tx" (write to
+/// device) channel asynchronously. For future robustness, bounded channels should be used to
+/// prevent messages from piling up (memory leak), and efforts should be made to handle situations
+/// like device disconnects (I/O thread should shut down, dropping the "rx" channel, which results
+/// in an error when reading for new packets; currently applications would have to handle this
+/// themselves).
+///
+/// One possible change/improvement to this API would be to have two "rx" channels: one for
+/// stream/broadcast messages (like stream data or log messages), and one for synchronous messages
+/// (like RPC responses and RPC errors). This would make application logic of doing RPCs easier:
+/// just write a message, then poll for a result, while other message types spool up in the stream
+/// "rx" channel.
+/// 
+pub fn grab_packet(raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<tio_packet::Packet>, rpc_send: &crossbeam_channel::Sender<tio_packet::Packet>) -> (){
+    use PacketType::*;
+    let packet = match raw_packet.packet_type {
+        Log => {
+            Packet::Log(LogMessage::from_bytes(&raw_packet.payload))
+        }
+        StreamZero => {
+            Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
+        }
+        Timebase => {
+            Packet::TimebaseData(TimebaseData::from_bytes(
+                &raw_packet.payload))
+        }
+        Source => {
+            Packet::SourceData(SourceData::from_bytes(
+                &raw_packet.payload))
+            
+        }
+        Heartbeat => Packet::Empty,
+        // TODO: actually parse/handle these
+        Stream => {
+            Packet::StreamDescription(StreamDescription::from_bytes(
+                &raw_packet.payload))
+            }
+        RPCResponse => {
+            Packet::RPCResponseData(RPCResponseData::from_bytes(
+                &raw_packet.payload))
+            }
+
+        RPCError => {
+            let rpcerrorpacket = RPCErrorData::from_bytes(&raw_packet.payload);
+            Packet::RPCErrorData(rpcerrorpacket)}
+
+        Text | Invalid | RPCRequest => {
+            println!(
+                "ignoring unhandled packet type: {:?}",
+                raw_packet.packet_type
+            );
+            Packet::Empty
+        }
+    };
+
+    match packet {
+        Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) | Packet::SourceData(_) | Packet::StreamDescription(_) => {
+            rx_send.send(packet).unwrap()
+        }
+        Packet::RPCResponseData(_) | Packet::RPCErrorData(_) => {
+            rpc_send.send(packet).unwrap()
+        }
+        _ => (),
+    };
+}
+
+
+#[derive(Debug)]
+pub struct Device {
+    pub uri: String,
+    pub info: DeviceInfo,
+    pub rx: channel::Receiver<Packet>,
+    pub tx: channel::Sender<Packet>,
+    pub rpc: channel::Receiver<Packet>,
+}
+
+impl Device {
+    /// Creates a list of possible devices to connect to. Mostly hunting for serial ports, but also
+    /// checks for a local TCP proxy (on the default port) and includes a dummy device. In the
+    /// future could do mDNS discovery.
+    pub fn enumerate_devices() -> Vec<String> {
+        println!("dummy://dummy");
+        let mut devices = vec!["dummy://dummy".to_string()];
+        // see if proxy is running locally
+        if let Ok(conn) = TcpStream::connect_timeout(
+            &SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 7855),
+            Duration::from_millis(100),
+        ) {
+            conn.shutdown(Shutdown::Both).unwrap();
+            println!("tcp://localhost:7855");
+            devices.push("tcp://localhost:7855".to_string());
+        }
+        if let Ok(ports) = serialport::available_ports() {
+            for p in ports.iter() {
+                match &p.port_type {
+                    SerialPortType::UsbPort(info) => {
+                        println!(
+                            "serial://{}   [USB VID:{:04x} PID:{:04x} NUM:{}]",
+                            p.port_name,
+                            info.vid,
+                            info.pid,
+                            info.serial_number.as_ref().map_or("", String::as_str)
+                        );
+                    }
+                    SerialPortType::BluetoothPort => {
+                        println!("serial://{}   [Bluetooth]", p.port_name);
+                    }
+                    SerialPortType::PciPort => {
+                        println!("serial://{}   [PCI]", p.port_name);
+                    }
+                    SerialPortType::Unknown => {
+                        println!("serial://{}", p.port_name);
+                    }
+                }
+                devices.push(format!("serial://{}", p.port_name));
+            }
+        } else {
+            // TODO: real error handling (or at least warning)
+            println!("Error fetching serial ports");
+        }
+        devices
+    }
+
+    /// Generic method to connect to a device, supporting multiple connection types/schemes.
+    ///
+    /// Once established, I/O happens in threads, but the initial connection is usually blocking in
+    /// the current thread.
+    pub fn connect(uri: String) -> Result<Device> {
+        if uri.starts_with("serial://") {
+            println!("calling connect_serial {}", uri);
+            Device::connect_serial(uri)
+        } else if uri.starts_with("tcp://") {
+            println!("calling connect_tcp {}", uri);
+            Device::connect_tcp(uri)
+        } else if uri.starts_with("dummy://") {
+            println!("calling connect_dummy {}", uri);
+            Device::connect_dummy()
+        } else {
+            Err(anyhow!("unsupported URI schema: {}", uri))
+        }
+    }
     fn connect_tcp(uri: String) -> Result<Device> {
-        let mut stream_compile = SensorData::default();
         let host_port = (&uri)[6..].to_string();
         println!("connecting to: {}", host_port);
         let mut stream = TcpStream::connect(host_port)?;
         //let mut stream = TcpStream::connect_timeout(&host_port.parse()?, Duration::from_secs(3))?;
         stream.set_nonblocking(true)?;
         let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) =
-            channel::bounded(0);
-        let (rx_sender, rx_receiver) = channel::bounded(0);
-        let req = formatRPCRequest("dev.name".to_string(), Vec::new());
-        stream.write(&req).unwrap();
-        //let req = Packet::RpcReq(RPCRequest::named_simple("dev.name".to_string()));
-        //let msg = req.to_bytes().unwrap();
-        println!("Right here");
-        //tx_sender.send(req).unwrap();
-        //stream.write(&msg).unwrap();
-        println!("Past that");
+            channel::bounded(10);
+        let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
+        let (rx_sender, rx_receiver) = channel::bounded(10);
         thread::spawn(move || {
             let mut header_buf = [0; 4];
             let mut packet_buf = [0; 512];
@@ -441,12 +545,14 @@ impl Device {
                 // do a non-blocking recv for any outgoing packets
                 match tx_receiver.try_recv() {
                     Ok(packet) => {
-                        stream.write(&packet.to_bytes().unwrap()).unwrap();
+                        let raw_packet = packet_to_raw(packet, Vec::new());
+                        stream.write(&raw_packet.into_bytes()).unwrap();
                         continue;
                     }
                     Err(channel::TryRecvError::Empty) => (),
                     //Err(e) => return Err(e).with_context(|| "problem with tx_receiver TCP channel"),
-                    Err(e) => Err(e).unwrap(),
+                    Err(channel::TryRecvError::Disconnected) => {//println!("Channels disconnected");
+                    break;}
                 };
                 // non-blocking reads for data
                 match stream.peek(&mut header_buf) {
@@ -462,7 +568,7 @@ impl Device {
                                 let raw_packet = RawPacket::from_bytes(&packet_buf[..total_len])
                                     .or(Err(anyhow!("parsing raw packet from bytes")))
                                     .unwrap();
-                                Device::grab_packet(raw_packet, &rx_sender, &mut stream_compile);
+                                grab_packet(raw_packet, &rx_sender, &rpc_sender);
                             }
                             Err(e) => Err(e).unwrap(),
                         }
@@ -478,13 +584,13 @@ impl Device {
             uri: uri,
             tx: tx_sender,
             rx: rx_receiver,
+            rpc: rpc_receiver,
             info: DeviceInfo::new_vmr("Unknown TCP VMR Device".into()),
         })
     }
 
     /// Opening the serial port file is blocking in current thread (but expected to be immediate?)
     fn connect_serial(uri: String) -> Result<Device> {
-        let mut stream_compile = SensorData::default();
         let path = (&uri)[9..].to_string();
         println!("connecting to: {}", path);
         let mut port = serialport::new(path, 115_200)
@@ -502,6 +608,7 @@ impl Device {
 
         let (tx_sender, tx_receiver) = channel::bounded(0);
         let (rx_sender, rx_receiver) = channel::bounded(0);
+        let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(0);
         thread::spawn(move || {
             // first read until END to clear any previous buffer stuff
             //
@@ -548,7 +655,7 @@ impl Device {
                         let raw_packet = RawPacket::from_bytes(&raw)
                             .or(Err(anyhow!("parsing raw packet from bytes")))
                             .unwrap();
-                        Device::grab_packet(raw_packet, &rx_sender, &mut stream_compile);
+                        grab_packet(raw_packet, &rx_sender, &rpc_sender);
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
                     Err(e) => Err(e).unwrap(),
@@ -559,6 +666,7 @@ impl Device {
             uri: uri,
             tx: tx_sender,
             rx: rx_receiver,
+            rpc: rpc_receiver,
             info: DeviceInfo::new_vmr("Unknown Serialport VMR Device".into()),
         })
     }
@@ -572,11 +680,13 @@ impl Device {
         // log: "starting dummy data loop"
         let (tx_sender, tx_receiver) = channel::bounded(0);
         let (rx_sender, rx_receiver) = channel::bounded(0);
+        let (rpc_sender, rpc_receiver) = channel::bounded(0);
         thread::spawn(move || Device::loop_dummy(rx_sender, tx_receiver));
         Ok(Device {
             uri: "dummy://".into(),
             tx: tx_sender,
             rx: rx_receiver,
+            rpc: rpc_receiver,
             info: DeviceInfo::new_vmr("Dummy VMR Device".into()),
         })
     }

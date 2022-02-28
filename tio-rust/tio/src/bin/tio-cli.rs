@@ -5,7 +5,10 @@ use std::io::{self, Write};
 use std::time::Duration;
 use structopt::StructOpt;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-use tio::Device;
+use tio::{Device, UpdatingInformation, Replies, ErrorCode};
+use tio_packet::{Packet, RPCRequest, TYPES};
+use std::str;
+use std::convert::TryInto;
 
 /// Pretty simple/small CLI implementation. I copied this from another CLI tool I wrote, and as a
 /// result it is a bit over-engineered and pulls in a bunch of dependencies which aren't really
@@ -34,7 +37,64 @@ enum Command {
     Enumerate,
     CatRaw { uri: String },
     Cat { uri: String },
+    Rpc {uri: String, rpc_call: String, arg: Option<String>},
     Proxy,
+}
+pub fn send_rpc(rpc_call: String, arg: Option<String>, device: &Device, updating_information: &mut UpdatingInformation, rpc_type:TYPES) -> Packet {
+    let resp;
+    let existing_arg;
+    let mut req_struct = RPCRequest::named_simple(rpc_call);
+    let request_id = req_struct.req_id;
+    use TYPES::*;
+    match arg{
+        Some(s) => {existing_arg = s;
+            match rpc_type {
+                U8 => {println!("u8"); req_struct.add_payload(u8::to_le_bytes(existing_arg.parse::<u8>().unwrap()).to_vec());}
+                I8 => {println!("i8"); req_struct.add_payload(i8::to_le_bytes(existing_arg.parse::<i8>().unwrap()).to_vec());}
+                U16 => {println!("u16"); req_struct.add_payload(u16::to_le_bytes(existing_arg.parse::<u16>().unwrap()).to_vec());}
+                I16 => {println!("i16"); req_struct.add_payload(i16::to_le_bytes(existing_arg.parse::<i16>().unwrap()).to_vec());}
+                U32 => {println!("u32"); req_struct.add_payload(u32::to_le_bytes(existing_arg.parse::<u32>().unwrap()).to_vec());}
+                I32 => {println!("i32"); req_struct.add_payload(i32::to_le_bytes(existing_arg.parse::<i32>().unwrap()).to_vec());}
+                U64 => {println!("u64"); req_struct.add_payload(u64::to_le_bytes(existing_arg.parse::<u64>().unwrap()).to_vec());}
+                I64 => {println!("i64"); req_struct.add_payload(i64::to_le_bytes(existing_arg.parse::<i64>().unwrap()).to_vec());}
+                F32 => {println!("f32"); req_struct.add_payload(f32::to_le_bytes(existing_arg.parse::<f32>().unwrap()).to_vec());}
+                F64 => {println!("f64"); req_struct.add_payload(f64::to_le_bytes(existing_arg.parse::<f64>().unwrap()).to_vec());}
+                StringType => {println!("string"); req_struct.add_payload(existing_arg.as_bytes().to_vec());}
+                NoneType => {}
+                _ => {}
+            }
+        }//req_struct.add_payload(s.as_bytes().to_vec())}
+        None => {}
+    }
+    let req = Packet::RpcReq(req_struct);
+    device.tx.send(req).unwrap();
+    loop{
+        let packet = device.rpc.recv();
+        updating_information.interpret_packet(packet.unwrap());
+        match updating_information.rpc_hash.get(&request_id){
+            Some(response) => {
+                resp = response;
+                break;}
+            None => { 
+                continue;}
+        };
+                
+    }
+    return resp.clone();
+}
+
+pub fn send_and_interpret_rpc(rpc_call: String, arg: Option<String>, device: &Device, updating_information: &mut UpdatingInformation) ->  (Option<TYPES>, Packet){
+    let packet = send_rpc("rpc.info".to_string(), Some(rpc_call.clone()), device, updating_information, TYPES::StringType);
+    let rpc_type;
+    match packet {
+        Packet::RPCErrorData(ref _sd) => {return (None, packet)},
+        Packet::RPCResponseData(sd) => {rpc_type = Some(TYPES::from_u8(sd.reply_payload[0]).unwrap());}
+        _ => {panic!("Error!");}
+    }
+    //println!("{:?}", rpc_type);
+    let response = send_rpc(rpc_call, arg, device, updating_information, rpc_type.unwrap());
+    return (rpc_type, response);
+
 }
 
 fn main() -> Result<()> {
@@ -107,6 +167,49 @@ fn run(opt: Opt) -> Result<()> {
                 // }
             }
         }
+        Command::Rpc{ uri, rpc_call, arg} => {
+            let mut updating_information = UpdatingInformation::default();
+            let device = Device::connect(uri)?;
+            let (rpc_type, response) = send_and_interpret_rpc(rpc_call, arg, &device, &mut updating_information);
+            let reply;
+            match response {
+                Packet::RPCErrorData(sd) => { 
+                    reply = Replies::Error(ErrorCode::give_message(ErrorCode::from_u16(sd.error_code).unwrap()));
+                    println!("RPC {:?}", reply);}
+                Packet:: RPCResponseData(sd) => {reply = Replies::Response(sd.reply_payload);}
+                _ => {panic!("Error")}
+            }
+
+            match rpc_type {
+                Some(resp_type) => { 
+                    if let Replies::Response(payload) = reply{
+                        use TYPES::*;
+                        match resp_type {
+                            U8 => {println!("RPC {:?}", payload);}
+                            I8 => {println!("RPC {:?}", payload);}
+                            U16 => {println!("RPC {:?}", u16::from_le_bytes(payload.try_into().unwrap()));}
+                            I16 => {println!("RPC {:?}", i16::from_le_bytes(payload.try_into().unwrap()));}
+                            U32 => {println!("RPC {:?}", u32::from_le_bytes(payload.try_into().unwrap()));}
+                            I32 => {println!("RPC {:?}", i32::from_le_bytes(payload.try_into().unwrap()));}
+                            U64 => {println!("RPC {:?}", u64::from_le_bytes(payload.try_into().unwrap()));}
+                            I64 => {println!("RPC {:?}", i64::from_le_bytes(payload.try_into().unwrap()));}
+                            F32 => {println!("RPC {:?}", f32::from_le_bytes(payload.try_into().unwrap()));}
+                            F64 => {println!("RPC {:?}", f64::from_le_bytes(payload.try_into().unwrap()));}
+                            StringType => {println!("RPC {:?}", str::from_utf8(&payload).unwrap());}
+                            NoneType => {println!("RPC {:?}", payload);}
+                            _ => {println!("RPC {:?}", payload);}
+                        }
+                    }
+                }
+                None => {}
+            }
+
+            // match str::from_utf8(response_payload) {
+            //     Ok(v) => {println!("Rpc Response {:?}", v)}
+            //     Err(_) => {println!("Rpc Response {:?}", response_payload)}
+            // };
+        }
+
         Command::Proxy => {
             return Err(anyhow!("not implemented"))
                 .with_context(|| "trying to open serial port".to_string());

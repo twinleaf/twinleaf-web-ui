@@ -133,7 +133,7 @@ impl RawPacketHeader {
 /// "zero copy" parse/encode. This may require lifetime annotations and thinking more about
 /// lifetimes/ownerships, which introduces some complexity; the current implementation is easier to
 /// reason about.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RawPacket {
     pub packet_type: PacketType,
     pub routing_len: u8,
@@ -204,7 +204,7 @@ impl LogType {
 /// For embedded use, might be better to take a `&str` (references) and work through the lifetime issues.
 /// Also, not sure if using UTF-8 strings pulls in too much unicode handling code for embedded use;
 /// might want to use ASCII and bytestrings instead?
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct LogMessage {
     pub log_data: u32,
     pub log_type: LogType,
@@ -250,7 +250,7 @@ impl LogMessage {
 //   RPCError -> ErrorResponse
 /// Fairly low-level representation of an RPC request. Might be better to use Rust enum of either
 /// String or u16 to represent the two options of "method as string" vs. "method as number).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RPCRequest {
     pub req_id: u16,
     pub method_or_len: u16,
@@ -265,10 +265,15 @@ impl RPCRequest {
         assert!(name.len() < 256);
         RPCRequest {
             req_id: rand::random(),
-            method_or_len: (name.len() as u16) << 1,
+            //method_or_len: (name.len() as u16) << 1,
+            method_or_len: (name.len() as u16) + 0x8000,
             name,
             payload: vec![],
         }
+    }
+
+    pub fn add_payload(&mut self, payload: Vec<u8>) -> () {
+        self.payload = payload;
     }
 
     // TODO: this is a partial implementation
@@ -337,7 +342,7 @@ impl StreamDescription {
 /// "device", and context about types of channels, and contain helpers for resolving timestamps and
 /// detecting missed packets, things like that. Or that could live in `tio`, but then don't have
 /// access to it in WASM context.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct StreamData {
     pub sample_num: u32,
     pub payload: Vec<u8>,
@@ -399,7 +404,7 @@ impl StreamInfo{
 }
 
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq, Clone)]
 pub struct RPCResponseData {
     pub request_id: u16,
     pub reply_payload: Vec<u8>,
@@ -414,7 +419,7 @@ impl RPCResponseData {
     }
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq, Clone)]
 pub struct RPCErrorData {
     pub request_id: u16,
     pub error_code: u16,
@@ -579,7 +584,7 @@ impl SourceData {
 /// TODO: the simple helper methods of individual types (like "warn()" for a log packet, or "simple
 /// RPC") could be moved to this type; would make constructing high-level structs easier in calling
 /// code.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Packet {
     Empty,
     Log(LogMessage),
