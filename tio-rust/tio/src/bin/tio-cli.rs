@@ -49,18 +49,30 @@ pub fn send_rpc(rpc_call: String, arg: Option<String>, device: &Device, updating
     match arg{
         Some(s) => {existing_arg = s;
             match rpc_type {
-                U8 => {println!("u8"); req_struct.add_payload(u8::to_le_bytes(existing_arg.parse::<u8>().unwrap()).to_vec());}
-                I8 => {println!("i8"); req_struct.add_payload(i8::to_le_bytes(existing_arg.parse::<i8>().unwrap()).to_vec());}
-                U16 => {println!("u16"); req_struct.add_payload(u16::to_le_bytes(existing_arg.parse::<u16>().unwrap()).to_vec());}
-                I16 => {println!("i16"); req_struct.add_payload(i16::to_le_bytes(existing_arg.parse::<i16>().unwrap()).to_vec());}
-                U32 => {println!("u32"); req_struct.add_payload(u32::to_le_bytes(existing_arg.parse::<u32>().unwrap()).to_vec());}
-                I32 => {println!("i32"); req_struct.add_payload(i32::to_le_bytes(existing_arg.parse::<i32>().unwrap()).to_vec());}
-                U64 => {println!("u64"); req_struct.add_payload(u64::to_le_bytes(existing_arg.parse::<u64>().unwrap()).to_vec());}
-                I64 => {println!("i64"); req_struct.add_payload(i64::to_le_bytes(existing_arg.parse::<i64>().unwrap()).to_vec());}
-                F32 => {println!("f32"); req_struct.add_payload(f32::to_le_bytes(existing_arg.parse::<f32>().unwrap()).to_vec());}
-                F64 => {println!("f64"); req_struct.add_payload(f64::to_le_bytes(existing_arg.parse::<f64>().unwrap()).to_vec());}
-                StringType => {println!("string"); req_struct.add_payload(existing_arg.as_bytes().to_vec());}
-                NoneType => {}
+                U8 => {//println!("u8"); 
+                    req_struct.add_payload(u8::to_le_bytes(existing_arg.parse::<u8>().unwrap()).to_vec());}
+                I8 => {//println!("i8"); 
+                    req_struct.add_payload(i8::to_le_bytes(existing_arg.parse::<i8>().unwrap()).to_vec());}
+                U16 => {//println!("u16"); 
+                    req_struct.add_payload(u16::to_le_bytes(existing_arg.parse::<u16>().unwrap()).to_vec());}
+                I16 => {//println!("i16"); 
+                    req_struct.add_payload(i16::to_le_bytes(existing_arg.parse::<i16>().unwrap()).to_vec());}
+                U32 => {//println!("u32"); 
+                    req_struct.add_payload(u32::to_le_bytes(existing_arg.parse::<u32>().unwrap()).to_vec());}
+                I32 => {//println!("i32"); 
+                    req_struct.add_payload(i32::to_le_bytes(existing_arg.parse::<i32>().unwrap()).to_vec());}
+                U64 => {//println!("u64"); 
+                    req_struct.add_payload(u64::to_le_bytes(existing_arg.parse::<u64>().unwrap()).to_vec());}
+                I64 => {//println!("i64"); 
+                    req_struct.add_payload(i64::to_le_bytes(existing_arg.parse::<i64>().unwrap()).to_vec());}
+                F32 => {//println!("f32"); 
+                    req_struct.add_payload(f32::to_le_bytes(existing_arg.parse::<f32>().unwrap()).to_vec());}
+                F64 => {//println!("f64"); 
+                    req_struct.add_payload(f64::to_le_bytes(existing_arg.parse::<f64>().unwrap()).to_vec());}
+                StringType => {//println!("string"); 
+                    req_struct.add_payload(existing_arg.as_bytes().to_vec());}
+                NoneType => {println!("None type, assuming string for argument"); 
+                    req_struct.add_payload(existing_arg.as_bytes().to_vec());}
                 _ => {}
             }
         }//req_struct.add_payload(s.as_bytes().to_vec())}
