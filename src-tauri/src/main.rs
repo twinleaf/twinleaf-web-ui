@@ -193,7 +193,7 @@ impl DeviceMessage {
     }
 }
 
-/// This, and the following two, are registered as "commands" via the Tauri API, which means they
+/// This, and the following three, are registered as "commands" via the Tauri API, which means they
 /// can be called from javascript.
 ///
 /// This command (enumerate_devices) is simple because it is stateless and has no concurrency
@@ -201,6 +201,15 @@ impl DeviceMessage {
 #[tauri::command]
 fn enumerate_devices() -> Vec<String> {
     DeviceJuggler::enumerate_devices()
+}
+
+#[tauri::command]
+fn rpc(
+    cmd: String,
+    state: tauri::State<Arc<Mutex<DeviceJuggler>>>,
+    app_handle: tauri::AppHandle,
+) -> () {
+    println!("Running newest version");
 }
 
 /// This command ("connect") can mutate the DeviceJuggler state, and needs to pass a reference to
@@ -267,7 +276,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             enumerate_devices,
             connect_device,
-            disconnect
+            disconnect,
+            rpc
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

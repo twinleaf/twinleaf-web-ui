@@ -14,8 +14,9 @@ import {
 } from "semantic-ui-react";
 import { LogEntry, useDeviceAPI, useDevices, useFPS, useLogs } from "./hooks";
 import { DataBuffer } from "./plotting";
-import { APIType, DeviceId, DeviceInfo } from "./api";
+import { APIType, DeviceId, DeviceInfo, API } from "./api";
 import { CombinedSpectrumPlot, TracePlot } from "./plot_components";
+import { appDir } from "@tauri-apps/api/path";
 
 type ContentPane = "configure" | "plot" | "about";
 
@@ -38,6 +39,7 @@ export const App = () => {
 
   return (
     <>
+      "heello"
       <TopBar activePane={activePane} setActivePane={setActivePane} setFPSRef={setFPSRef} />
       <Container fluid>
         {activePane === "plot" && !dataBuffer ? (
@@ -45,7 +47,7 @@ export const App = () => {
             <Button onClick={() => setActivePane("configure")}>Connect a device first</Button>
           </Header>
         ) : activePane === "plot" && dataBuffer ? (
-          <PlotPane dataBuffer={dataBuffer} />
+          <PlotPane dataBuffer={dataBuffer} api={api} />
         ) : activePane === "configure" ? (
           <ConfigurePane
             apiType={api.type}
@@ -171,7 +173,7 @@ const Devices = (props: DevicesProps) => {
               </Menu.Item>
               <Menu.Item>
                 using {apiType === "Tauri" ? "Rust Proxy" : apiType} to find devices
-                <Popup trigger={<Icon name="help" />} hoverable position="top center" wide="very">
+                <Popup trigger={<Icon name="help" />} hoverable position="top center">
                   <Grid centered divided columns="equal">
                     {typeof window.__TAURI__ !== "undefined" && (
                       <Grid.Column textAlign="center" verticalAlign="top">
@@ -186,28 +188,6 @@ const Devices = (props: DevicesProps) => {
                         )}
                       </Grid.Column>
                     )}
-                    <Grid.Column textAlign="center" verticalAlign="top">
-                      <Header as="h4">WebSerial</Header>
-                      <p style={{ height: 120 }}>
-                        Discover Twinleaf devices over TIO via WebSerial
-                      </p>
-                      {apiType === "WebSerial" ? (
-                        <Button disabled>in use</Button>
-                      ) : (
-                        <Button disabled>switch (experimental)</Button>
-                      )}
-                    </Grid.Column>
-                    <Grid.Column textAlign="center" verticalAlign="top">
-                      <Header as="h4">WebSocket</Header>
-                      <p style={{ height: 120 }}>
-                        Discover Twinleaf devices through a tio-proxy via WebSocket communication
-                      </p>
-                      {apiType === "WebSocket" ? (
-                        <Button disabled>in use</Button>
-                      ) : (
-                        <Button disabled>not yet</Button>
-                      )}
-                    </Grid.Column>
                     <Grid.Column textAlign="center" verticalAlign="top">
                       <Header as="h4">Demo</Header>
                       <p style={{ height: 120 }}>
@@ -263,8 +243,9 @@ const TopBar = ({
 
 type PlotPaneProps = {
   dataBuffer: DataBuffer;
+  api: API;
 };
-const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
+const PlotPane = ({ dataBuffer, api: API }: PlotPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [windowSize, setWindowSize] = useState(dataBuffer.size);
   const [paused, setPaused] = useState(false);
@@ -289,7 +270,13 @@ const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
         initial={dataBuffer.size}
       />
       {windowSize} samples
-      {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
+      <Button onClick={() => {
+        console.log('you clicked the button');
+        API.doRPC("something interesting");
+      }}>
+        Pause plotting
+      </Button>
+      {dataBuffer.channelNames.slice(0, 3).map((_name, i) => (
         <TracePlot
           key={i}
           color={colors[i % colors.length]}

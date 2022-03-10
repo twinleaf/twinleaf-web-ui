@@ -26,7 +26,7 @@ export type DeviceInfo = {
   name: string;
 };
 
-export type APIType = "Tauri" | "WebSerial" | "WebSocket" | "Demo";
+export type APIType = "Tauri" | "Demo";
 
 export interface API {
   type: APIType;
@@ -35,6 +35,7 @@ export interface API {
   enumerateDevices: () => Promise<DeviceId[]>;
   connectDevice: (uri: string) => Promise<DeviceInfo>;
   disconnect: () => Promise<void>;
+  doRPC: (cmd: string) => Promise<void>;
 }
 
 export const TauriAPI: API = {
@@ -60,6 +61,10 @@ export const TauriAPI: API = {
   },
   disconnect: async () => {
     await invoke("disconnect");
+  },
+  doRPC: async (cmd: string) => {
+    await invoke("rpc", {cmd: cmd});
+    console.log('finished rpc call:', cmd)
   },
 };
 
@@ -93,6 +98,7 @@ function handleOrientation(e: DeviceOrientationEvent) {
 }
 export const DemoAPI: API = {
   type: "Demo",
+  doRPC: async (cmd: string) => {},
   listenToPackets: (cb: (packet: DevicePacket) => void) => {
     demoSampleNumber = 0;
 
@@ -195,6 +201,7 @@ export const DemoAPI: API = {
   },
 };
 
+/*
 /////////////////////////////////////////////////////////////////
 // There was discussion of a WebSerial API
 export class WebSerialAPI implements API {
@@ -255,3 +262,4 @@ export class WebSocketAPI implements API {
     throw new Error("not implemented");
   }
 }
+*/

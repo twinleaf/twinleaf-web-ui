@@ -1,22 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  API,
-  APIType,
-  DemoAPI,
-  DeviceId,
-  DeviceInfo,
-  DevicePacket,
-  TauriAPI,
-  WebSerialAPI,
-  WebSocketAPI,
-} from "./api";
+import { API, APIType, DemoAPI, DeviceId, DeviceInfo, DevicePacket, TauriAPI } from "./api";
 import { DataBuffer } from "./plotting";
 
 const buildApi = (apiType: APIType): API => {
   if (apiType === "Demo") return DemoAPI; // stateless
   if (apiType === "Tauri") return TauriAPI; // stateless
-  if (apiType === "WebSerial") return WebSerialAPI.getInstance();
-  if (apiType === "WebSocket") return WebSocketAPI.getInstance(); // TODO this may need connection details?
   throw new Error("Unknown API Type " + apiType);
 };
 
