@@ -321,6 +321,8 @@ impl UpdatingInformation {
 
     }
 }
+
+
 /// Represents metadata about a device that would be returned by StreamDesc and/or other RPC calls
 /// at device initialization time.
 ///
@@ -680,7 +682,7 @@ impl Device {
         // log: "starting dummy data loop"
         let (tx_sender, tx_receiver) = channel::bounded(0);
         let (rx_sender, rx_receiver) = channel::bounded(0);
-        let (rpc_sender, rpc_receiver) = channel::bounded(0);
+        let (_rpc_sender, rpc_receiver) = channel::bounded(0);
         thread::spawn(move || Device::loop_dummy(rx_sender, tx_receiver));
         Ok(Device {
             uri: "dummy://".into(),
@@ -727,5 +729,78 @@ impl Device {
                 )))
                 .unwrap();
         }
+    }
+    pub fn send_rpc(&self, rpc_call: String, arg: Option<String>, updating_information: &mut UpdatingInformation, rpc_type:TYPES) -> Packet {
+        let resp;
+        let existing_arg;
+        let mut req_struct = RPCRequest::named_simple(rpc_call);
+        let request_id = req_struct.req_id;
+        use TYPES::*;
+        match arg{
+            Some(s) => {existing_arg = s;
+                match rpc_type {
+                    U8 => {//println!("u8"); 
+                        req_struct.add_payload(u8::to_le_bytes(existing_arg.parse::<u8>().unwrap()).to_vec());}
+                    I8 => {//println!("i8"); 
+                        req_struct.add_payload(i8::to_le_bytes(existing_arg.parse::<i8>().unwrap()).to_vec());}
+                    U16 => {//println!("u16"); 
+                        req_struct.add_payload(u16::to_le_bytes(existing_arg.parse::<u16>().unwrap()).to_vec());}
+                    I16 => {//println!("i16"); 
+                        req_struct.add_payload(i16::to_le_bytes(existing_arg.parse::<i16>().unwrap()).to_vec());}
+                    U32 => {//println!("u32"); 
+                        req_struct.add_payload(u32::to_le_bytes(existing_arg.parse::<u32>().unwrap()).to_vec());}
+                    I32 => {//println!("i32"); 
+                        req_struct.add_payload(i32::to_le_bytes(existing_arg.parse::<i32>().unwrap()).to_vec());}
+                    U64 => {//println!("u64"); 
+                        req_struct.add_payload(u64::to_le_bytes(existing_arg.parse::<u64>().unwrap()).to_vec());}
+                    I64 => {//println!("i64"); 
+                        req_struct.add_payload(i64::to_le_bytes(existing_arg.parse::<i64>().unwrap()).to_vec());}
+                    F32 => {//println!("f32"); 
+                        req_struct.add_payload(f32::to_le_bytes(existing_arg.parse::<f32>().unwrap()).to_vec());}
+                    F64 => {//println!("f64"); 
+                        req_struct.add_payload(f64::to_le_bytes(existing_arg.parse::<f64>().unwrap()).to_vec());}
+                    StringType => {//println!("string"); 
+                        req_struct.add_payload(existing_arg.as_bytes().to_vec());}
+                    NoneType => {println!("None type, assuming string for argument"); 
+                        req_struct.add_payload(existing_arg.as_bytes().to_vec());}
+                    _ => {}
+                }
+            }//req_struct.add_payload(s.as_bytes().to_vec())}
+            None => {}
+        }
+        let req = Packet::RpcReq(req_struct);
+        self.tx.send(req).unwrap();
+        loop{
+            let packet = self.rpc.recv();
+            updating_information.interpret_packet(packet.unwrap());
+            match updating_information.rpc_hash.get(&request_id){
+                Some(response) => {
+                    resp = response;
+                    break;}
+                None => { 
+                    continue;}
+            };
+                    
+        }
+        return resp.clone();
+    }
+    
+    pub fn send_and_interpret_rpc(&self, rpc_call: String, arg: Option<String>, updating_information: &mut UpdatingInformation) ->  (Option<TYPES>, Packet){
+        let packet = self.send_rpc("rpc.info".to_string(), Some(rpc_call.clone()), updating_information, TYPES::StringType);
+        let rpc_type;
+        match packet {
+            Packet::RPCErrorData(ref _sd) => {return (None, packet)},
+            Packet::RPCResponseData(sd) => {rpc_type = Some(TYPES::from_u8(sd.reply_payload[0]).unwrap());}
+            _ => {panic!("Error!");}
+        }
+        //println!("{:?}", rpc_type);
+        let response = self.send_rpc(rpc_call, arg, updating_information, rpc_type.unwrap());
+        return (rpc_type, response);
+    
+    }
+
+    pub fn data_rate(&self, value: String) -> (){
+        let mut updating_information = UpdatingInformation::default();
+        self.send_and_interpret_rpc("data.rate".to_string(), Some(value) , &mut updating_information);
     }
 }

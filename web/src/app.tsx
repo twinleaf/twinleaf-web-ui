@@ -14,7 +14,7 @@ import {
 } from "semantic-ui-react";
 import { LogEntry, useDeviceAPI, useDevices, useFPS, useLogs } from "./hooks";
 import { DataBuffer } from "./plotting";
-import { APIType, DeviceId, DeviceInfo } from "./api";
+import { APIType, DeviceId, DeviceInfo, API } from "./api";
 import { CombinedSpectrumPlot, TracePlot } from "./plot_components";
 
 type ContentPane = "configure" | "plot" | "about";
@@ -45,7 +45,7 @@ export const App = () => {
             <Button onClick={() => setActivePane("configure")}>Connect a device first</Button>
           </Header>
         ) : activePane === "plot" && dataBuffer ? (
-          <PlotPane dataBuffer={dataBuffer} />
+          <PlotPane dataBuffer={dataBuffer} api ={api} />
         ) : activePane === "configure" ? (
           <ConfigurePane
             apiType={api.type}
@@ -263,10 +263,12 @@ const TopBar = ({
 
 type PlotPaneProps = {
   dataBuffer: DataBuffer;
+  api: API;
 };
-const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
+const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [windowSize, setWindowSize] = useState(dataBuffer.size);
+  const [initialRate, setDataRate] = useState(40);
   const [paused, setPaused] = useState(false);
 
   const colors = ["red", "green", "blue"];
@@ -289,6 +291,16 @@ const PlotPane = ({ dataBuffer }: PlotPaneProps) => {
         initial={dataBuffer.size}
       />
       {windowSize} samples
+      <Slider
+        min={20}
+        max={100}
+        onChange={(n: number) => {
+          API.data_rate(n)
+          setDataRate(n)
+        }}
+        initial={initialRate}
+      />
+      {initialRate} Hz
       {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
         <TracePlot
           key={i}

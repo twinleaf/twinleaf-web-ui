@@ -35,6 +35,7 @@ export interface API {
   enumerateDevices: () => Promise<DeviceId[]>;
   connectDevice: (uri: string) => Promise<DeviceInfo>;
   disconnect: () => Promise<void>;
+  data_rate: (value: number) => Promise<void>
 }
 
 export const TauriAPI: API = {
@@ -60,6 +61,9 @@ export const TauriAPI: API = {
   },
   disconnect: async () => {
     await invoke("disconnect");
+  },
+  data_rate: async (value: number) => {
+    await invoke("data_rate", {value: value})
   },
 };
 
@@ -193,6 +197,7 @@ export const DemoAPI: API = {
     demoOrientationConnected = false;
     return Promise.resolve();
   },
+  data_rate: async (value: number) => {},
 };
 
 /////////////////////////////////////////////////////////////////
@@ -221,6 +226,9 @@ export class WebSerialAPI implements API {
     return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
   }
   async disconnect() {
+    throw new Error("not implemented");
+  }
+  async data_rate() {
     throw new Error("not implemented");
   }
 }
@@ -252,6 +260,9 @@ export class WebSocketAPI implements API {
     return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
   }
   async disconnect() {
+    throw new Error("not implemented");
+  }
+  async data_rate() {
     throw new Error("not implemented");
   }
 }

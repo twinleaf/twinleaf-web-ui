@@ -32,7 +32,7 @@ use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, Menu, Submenu};
+use tauri::{AppHandle, CustomMenuItem, Manager, Menu, Submenu};
 use tio::{Device, DeviceInfo};
 use tio_packet::Packet;
 
@@ -68,6 +68,10 @@ impl DeviceJuggler {
     /// Just a pass-through of the tio implementation
     pub fn enumerate_devices() -> Vec<String> {
         Device::enumerate_devices()
+    }
+
+    pub fn data_rate(&self, value: f32) -> () {
+        Device::data_rate(&self.device.as_ref().unwrap(), value.to_string())
     }
 
     /// Just clears the Options, which should result in the Device getting "dropped", which should
@@ -223,6 +227,15 @@ fn disconnect(state: tauri::State<Arc<Mutex<DeviceJuggler>>>) -> Result<String, 
     juggler.disconnect()
 }
 
+#[tauri::command]
+fn data_rate(
+    state: tauri::State<Arc<Mutex<DeviceJuggler>>>,
+    value: f32,
+) -> () {
+    let juggler = state.lock().unwrap();
+    juggler.data_rate(value);
+}
+
 fn main() {
     //let hide_menuitem = CustomMenuItem::new("hide".to_string(), "Hide Window");
     //let show_menuitem = CustomMenuItem::new("show".to_string(), "Show Window");
@@ -267,7 +280,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             enumerate_devices,
             connect_device,
-            disconnect
+            disconnect,
+            data_rate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
