@@ -16,7 +16,6 @@ import { LogEntry, useDeviceAPI, useDevices, useFPS, useLogs } from "./hooks";
 import { DataBuffer } from "./plotting";
 import { APIType, DeviceId, DeviceInfo, API } from "./api";
 import { CombinedSpectrumPlot, TracePlot } from "./plot_components";
-import { appDir } from "@tauri-apps/api/path";
 
 type ContentPane = "configure" | "plot" | "about";
 
@@ -252,6 +251,16 @@ const PlotPane = ({ dataBuffer, api: API }: PlotPaneProps) => {
 
   const colors = ["red", "green", "blue"];
 
+  const [numChannels, setNumChannels] = useState(3);
+
+  const needsRPC = typeof window.__TAURI__ !== "undefined";
+  const maybeButton =  needsRPC ? <Button onClick={() => {
+    console.log('you clicked the button');
+    API.doRPC("something interesting");
+  }}>
+    Pause plotting
+  </Button> : null;
+
   return (
     <div>
       <Button onClick={() => setPaused(false)} disabled={!paused}>
@@ -270,13 +279,17 @@ const PlotPane = ({ dataBuffer, api: API }: PlotPaneProps) => {
         initial={dataBuffer.size}
       />
       {windowSize} samples
-      <Button onClick={() => {
-        console.log('you clicked the button');
-        API.doRPC("something interesting");
-      }}>
-        Pause plotting
-      </Button>
-      {dataBuffer.channelNames.slice(0, 3).map((_name, i) => (
+      <Slider
+        min={0}
+        max={6}
+        onChange={(n: number) => {
+          setNumChannels(n)
+        }}
+        initial={numChannels}
+      />
+      plotting {numChannels} channels
+      {maybeButton}
+      {dataBuffer.channelNames.slice(0, numChannels).map((_name, i) => (
         <TracePlot
           key={i}
           color={colors[i % colors.length]}

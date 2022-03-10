@@ -77,7 +77,7 @@ export class DataBuffer {
   };
 
   /*
-   * This a hack for data souces which don't send timestamps
+   * This a hack for data sources which don't send timestamps
    * and send data more frequently that the refresh rate.
    * If all data source send timestamps we don't need this,
    * we can plot more honestly and stil not drop frames.
