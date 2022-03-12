@@ -463,21 +463,47 @@ pub struct Device {
     pub rpc: channel::Receiver<Packet>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct DeviceDesc {
+    pub url: String,
+    pub desc: String,
+}
+
+impl DeviceDesc {}
+
 impl Device {
+    pub fn get_desc(dev: Device) -> String {
+        dev.tx.send(Packet::RpcReq(RPCRequest::named_simple("dev.desc".to_string()))).unwrap();
+        let p: Packet = dev.rpc.recv().unwrap();
+        match p {
+            Packet::RPCResponseData(resp) => {
+                std::str::from_utf8(&resp.reply_payload).unwrap().to_string()
+            }
+            _ => {
+                "".to_string()
+            }
+        }
+    }
+
     /// Creates a list of possible devices to connect to. Mostly hunting for serial ports, but also
     /// checks for a local TCP proxy (on the default port) and includes a dummy device. In the
     /// future could do mDNS discovery.
-    pub fn enumerate_devices() -> Vec<String> {
+    pub fn enumerate_devices() -> Vec<DeviceDesc> {
         println!("dummy://dummy");
-        let mut devices = vec!["dummy://dummy".to_string()];
+        let mut devices = vec![DeviceDesc{url: "dummy://dummy".to_string(),
+                                            desc: "Dummy device".to_string()}];
         // see if proxy is running locally
+        let mut proxy_running = false;
         if let Ok(conn) = TcpStream::connect_timeout(
             &SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 7855),
             Duration::from_millis(100),
         ) {
+            proxy_running = true;
             conn.shutdown(Shutdown::Both).unwrap();
-            println!("tcp://localhost:7855");
-            devices.push("tcp://localhost:7855".to_string());
+            let url= "tcp://localhost:7855".to_string();
+            println!("{}", url);
+            let dev = Device::connect_tcp(url.clone()).unwrap();
+            devices.push(DeviceDesc{url: url,desc: Device::get_desc(dev)});
         }
         if let Ok(ports) = serialport::available_ports() {
             for p in ports.iter() {
@@ -501,7 +527,9 @@ impl Device {
                         println!("serial://{}", p.port_name);
                     }
                 }
-                devices.push(format!("serial://{}", p.port_name));
+                let url = format!("serial://{}", p.port_name);
+                devices.push(DeviceDesc{url: url.clone(),
+                desc: { if proxy_running {"No desc with proxy".to_string()} else {Device::get_desc(Device::connect(url).unwrap())}}});
             }
         } else {
             // TODO: real error handling (or at least warning)
@@ -597,18 +625,21 @@ impl Device {
             .timeout(Duration::from_millis(50))
             .open()?;
 
+        // Minimal way to switch to binary mode.
+        let to_bin: Vec<u8> = vec![0xC0, 0x05, 0x00, 0x00, 0x00, 0x2E, 0x2F, 0x9A, 0x16, 0xC0];
+        port.write_all(&to_bin)?;
         // send "send_all"
-        let req = Packet::RpcReq(RPCRequest::named_simple("dev.send_all".to_string()));
-        let msg = req.to_bytes().unwrap();
-        port.write_all(&tio_slip_encode(&msg))?;
+        //let req = Packet::RpcReq(RPCRequest::named_simple("data.send_all".to_string()));
+        //let msg = req.to_bytes().unwrap();
+        //port.write_all(&tio_slip_encode(&msg))?;
 
         // do a read to flush any random input
         let mut serial_buf: Vec<u8> = vec![0; 1000];
         port.read(serial_buf.as_mut_slice())?;
 
-        let (tx_sender, tx_receiver) = channel::bounded(0);
-        let (rx_sender, rx_receiver) = channel::bounded(0);
-        let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(0);
+        let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
+        let (rx_sender, rx_receiver) = channel::bounded(10);
+        let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         thread::spawn(move || {
             // first read until END to clear any previous buffer stuff
             //
@@ -630,10 +661,11 @@ impl Device {
             loop {
                 // do a non-blocking recv for any outgoing packets
                 match tx_receiver.try_recv() {
-                    Ok(_packet) => {
+                    Ok(packet) => {
                         // TODO: send this packet down the pipe as bytes
                         //stream.write(packet.as_bytes());
-                        //buf_port.write_all(&tio_slip_encode(&msg));
+                        let portw = buf_port.get_mut();
+                        portw.write_all(&tio_slip_encode(&packet.to_bytes().unwrap())).unwrap();
                         continue;
                     }
                     Err(channel::TryRecvError::Empty) => (),
@@ -680,7 +712,7 @@ impl Device {
         // log: "starting dummy data loop"
         let (tx_sender, tx_receiver) = channel::bounded(0);
         let (rx_sender, rx_receiver) = channel::bounded(0);
-        let (rpc_sender, rpc_receiver) = channel::bounded(0);
+        let (_rpc_sender, rpc_receiver) = channel::bounded(0);
         thread::spawn(move || Device::loop_dummy(rx_sender, tx_receiver));
         Ok(Device {
             uri: "dummy://".into(),

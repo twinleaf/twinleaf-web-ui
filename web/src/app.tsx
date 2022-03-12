@@ -131,9 +131,10 @@ const Devices = (props: DevicesProps) => {
     <Table celled>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell width={6}>Device</Table.HeaderCell>
-          <Table.HeaderCell width={4}>Device Info</Table.HeaderCell>
-          <Table.HeaderCell width={6}></Table.HeaderCell>
+          <Table.HeaderCell width={4}>Device</Table.HeaderCell>
+          <Table.HeaderCell width={6}>Description</Table.HeaderCell>
+          <Table.HeaderCell width={6}>Device Info</Table.HeaderCell>
+          <Table.HeaderCell width={3}></Table.HeaderCell>
         </Table.Row>
       </Table.Header>
 
@@ -145,8 +146,11 @@ const Devices = (props: DevicesProps) => {
               {id}
             </Table.Cell>
             <Table.Cell>
+              {devices[id][0]}
+            </Table.Cell>
+            <Table.Cell>
               <code>
-                <pre>{devices[id] ? JSON.stringify(devices[id], null, 2) : ""}</pre>
+                <pre>{devices[id] ? JSON.stringify(devices[id][1], null, 2) : ""}</pre>
               </code>
             </Table.Cell>
             <Table.Cell>
@@ -164,7 +168,7 @@ const Devices = (props: DevicesProps) => {
 
       <Table.Footer>
         <Table.Row>
-          <Table.HeaderCell colSpan="3">
+          <Table.HeaderCell colSpan="4">
             <Menu>
               <Menu.Item>
                 <Button onClick={updateDevices}>Scan again for devices</Button>

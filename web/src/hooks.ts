@@ -65,7 +65,7 @@ export const useDevices = (
   connect: (id: DeviceId) => Promise<void>;
   connectedDevice: string | undefined;
   dataBuffer: DataBuffer | undefined;
-  devices: Record<DeviceId, DeviceInfo | undefined>;
+  devices: Record<DeviceDesc, DeviceInfo | undefined>;
   disconnect: () => Promise<void>;
   updateDevices: () => void;
 } => {
@@ -116,8 +116,8 @@ export const useDevices = (
   const updateDevices = async () => {
     await disconnect();
     setDevices({});
-    const deviceIds = await api.enumerateDevices();
-    const devices = Object.fromEntries(deviceIds.map((id) => [id, undefined]));
+    const deviceDescs = await api.enumerateDevices();
+    const devices = Object.fromEntries(deviceDescs.map((desc) => [desc.url, [desc.desc, undefined]]));
     setDevices(devices);
     // we could connect+disconnect each device here to update deviceInfo, but only if
     // it is safe to connect to arbitrary devices, which may not be Twinleaf devices.
