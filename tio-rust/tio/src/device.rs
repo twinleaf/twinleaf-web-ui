@@ -14,6 +14,7 @@ use tio_packet::{
 };
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::str;
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Value {
@@ -360,10 +361,10 @@ impl DeviceInfo {
         }
     }
 
-    pub fn new_device(name:String, sensor_data: &SensorData) -> DeviceInfo {
+    pub fn new_device(name:String, columns: Vec<String>) -> DeviceInfo {
         let mut channels = Vec::new();
-        for source in &sensor_data.stream_compilation {
-            channels.push(source.column_name.clone());
+        for column_name in columns {
+            channels.push(column_name.into());
         }
         DeviceInfo {
             name,
@@ -540,6 +541,8 @@ impl Device {
             channel::bounded(10);
         let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         let (rx_sender, rx_receiver) = channel::bounded(10);
+        let req = Packet::RpcReq(RPCRequest::named_simple("data.send_all".to_string()));
+        tx_sender.send(req).unwrap();
         thread::spawn(move || {
             let mut header_buf = [0; 4];
             let mut packet_buf = [0; 512];
@@ -582,13 +585,17 @@ impl Device {
                 };
             }
         });
-        Ok(Device {
+        let mut device = Device {
             uri: uri,
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo::new_vmr("Unknown TCP VMR Device".into()),
-        })
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new()}};
+
+        let columns = device.column_names();
+        let name = device.name();
+        device.info = DeviceInfo::new_device(name, columns);
+        Ok(device)
     }
 
     /// Opening the serial port file is blocking in current thread (but expected to be immediate?)
@@ -800,7 +807,26 @@ impl Device {
     }
 
     pub fn data_rate(&self, value: String) -> (){
+        //ideally updating_information would be accessible by entire Device class
         let mut updating_information = UpdatingInformation::default();
         self.send_and_interpret_rpc("data.rate".to_string(), Some(value) , &mut updating_information);
+    }
+
+    pub fn column_names(&self) -> Vec<String> {
+        let mut updating_information = UpdatingInformation::default();
+        let (_rpc_type, response) = self.send_and_interpret_rpc("data.stream.columns".to_string(), None, &mut updating_information);
+        match response {
+            Packet:: RPCResponseData(sd) => {str::from_utf8(&sd.reply_payload).unwrap().split(" ").map(|s| s.to_string()).collect()}
+            _ => {panic!("Error")}
+        }
+    }
+
+    pub fn name(&self) -> String {
+        let mut updating_information = UpdatingInformation::default();
+        let (_rpc_type, response) = self.send_and_interpret_rpc("dev.name".to_string(), None, &mut updating_information);
+        match response {
+            Packet:: RPCResponseData(sd) => {str::from_utf8(&sd.reply_payload).unwrap().to_string()}
+            _ => {panic!("Error")}
+        }
     }
 }

@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, CustomMenuItem, Manager, Menu, Submenu};
-use tio::{Device, DeviceInfo};
+use tio::{Device, DeviceInfo, UpdatingInformation};
 use tio_packet::Packet;
 
 /// This is a context/state object which we pass to the tauri runtime at startup. It is potentially
@@ -105,6 +105,7 @@ impl DeviceJuggler {
         device_rx: channel::Receiver<Packet>,
         done_rx: channel::Receiver<()>,
     ) {
+        let mut updating_information = UpdatingInformation::default();
         loop {
             let resp = done_rx.recv_timeout(Duration::from_millis(1));
             if let Err(channel::RecvTimeoutError::Disconnected) = resp {
@@ -114,6 +115,8 @@ impl DeviceJuggler {
 
             match device_rx.recv_timeout(Duration::from_millis(40)) {
                 Ok(packet) => {
+                    updating_information.interpret_packet(packet.clone());
+
                     use Packet::*;
                     match packet {
                         Log(msg) => {

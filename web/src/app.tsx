@@ -293,7 +293,7 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
       {windowSize} samples
       <Slider
         min={20}
-        max={100}
+        max={1000}
         onChange={(n: number) => {
           API.data_rate(n)
           setDataRate(n)
@@ -301,7 +301,7 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
         initial={initialRate}
       />
       {initialRate} Hz
-      {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
+      {dataBuffer.channelNames.map((_name, i) => (
         <TracePlot
           key={i}
           color={colors[i % colors.length]}
