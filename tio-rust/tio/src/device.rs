@@ -7,7 +7,7 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpStream};
-use std::thread;
+use std::{thread};
 use std::time::Duration;
 use tio_packet::{
     LogMessage, Packet, PacketType, RPCRequest, RawPacket, RawPacketHeader, StreamData, TimebaseData, SourceData, StreamDescription, RPCResponseData, TYPES, RPCErrorData,
@@ -403,14 +403,19 @@ impl DeviceInfo {
 /// just write a message, then poll for a result, while other message types spool up in the stream
 /// "rx" channel.
 /// 
-pub fn grab_packet(raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<tio_packet::Packet>, rpc_send: &crossbeam_channel::Sender<tio_packet::Packet>) -> (){
+pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<tio_packet::Packet>, rpc_send: &crossbeam_channel::Sender<tio_packet::Packet>) -> (){
     use PacketType::*;
     let packet = match raw_packet.packet_type {
         Log => {
             Packet::Log(LogMessage::from_bytes(&raw_packet.payload))
         }
         StreamZero => {
-            Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
+            if *metadata_p {
+                Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
+            }
+            else{
+                Packet::Empty
+            }
         }
         Timebase => {
             Packet::TimebaseData(TimebaseData::from_bytes(
@@ -419,11 +424,11 @@ pub fn grab_packet(raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<ti
         Source => {
             Packet::SourceData(SourceData::from_bytes(
                 &raw_packet.payload))
-            
         }
         Heartbeat => Packet::Empty,
         // TODO: actually parse/handle these
         Stream => {
+            *metadata_p = true;
             Packet::StreamDescription(StreamDescription::from_bytes(
                 &raw_packet.payload))
             }
@@ -544,6 +549,7 @@ impl Device {
         let req = Packet::RpcReq(RPCRequest::named_simple("data.send_all".to_string()));
         tx_sender.send(req).unwrap();
         thread::spawn(move || {
+            let mut metadata_p = false;
             let mut header_buf = [0; 4];
             let mut packet_buf = [0; 512];
             loop {
@@ -573,7 +579,7 @@ impl Device {
                                 let raw_packet = RawPacket::from_bytes(&packet_buf[..total_len])
                                     .or(Err(anyhow!("parsing raw packet from bytes")))
                                     .unwrap();
-                                grab_packet(raw_packet, &rx_sender, &rpc_sender);
+                                grab_packet(&mut metadata_p, raw_packet, &rx_sender, &rpc_sender);
                             }
                             Err(e) => Err(e).unwrap(),
                         }
@@ -633,7 +639,7 @@ impl Device {
             // implementing buffering itself..
             let mut buf_port = BufReader::new(port);
             let mut slip_buf: Vec<u8> = Vec::with_capacity(1024);
-
+            let mut metadata_p = false;
             // do a throw-away read to flush any partial packets
             let _ = buf_port.read_until(0xC0, &mut slip_buf);
             loop {
@@ -664,7 +670,7 @@ impl Device {
                         let raw_packet = RawPacket::from_bytes(&raw)
                             .or(Err(anyhow!("parsing raw packet from bytes")))
                             .unwrap();
-                        grab_packet(raw_packet, &rx_sender, &rpc_sender);
+                        grab_packet(&mut metadata_p, raw_packet, &rx_sender, &rpc_sender);
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
                     Err(e) => Err(e).unwrap(),
