@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, CustomMenuItem, Manager, Menu, Submenu};
-use tio::{Device, DeviceInfo, UpdatingInformation};
+use tio::{Device, DeviceInfo, UpdatingInformation, DeviceDesc};
 use tio_packet::Packet;
 
 /// This is a context/state object which we pass to the tauri runtime at startup. It is potentially
@@ -66,7 +66,7 @@ impl DeviceJuggler {
     /// future could do mDNS discovery.
     ///
     /// Just a pass-through of the tio implementation
-    pub fn enumerate_devices() -> Vec<String> {
+    pub fn enumerate_devices() -> Vec<DeviceDesc> {
         Device::enumerate_devices()
     }
 
@@ -131,7 +131,7 @@ impl DeviceJuggler {
                                 "device-packet",
                                 DeviceMessage::new_data(
                                     sd.sample_num,
-                                    sd.as_f32().into_iter().map(|v| v as f64).collect(),
+                                    updating_information.data_point.data.clone()
                                 ),
                             )
                             .unwrap();
@@ -206,7 +206,7 @@ impl DeviceMessage {
 /// This command (enumerate_devices) is simple because it is stateless and has no concurrency
 /// concerns.
 #[tauri::command]
-fn enumerate_devices() -> Vec<String> {
+fn enumerate_devices() -> Vec<DeviceDesc> {
     DeviceJuggler::enumerate_devices()
 }
 

@@ -137,8 +137,10 @@ pub struct StreamCompilation {
 
 #[derive(Debug, Clone)]
 pub struct SensorData {
+    //stream_compilation holds interesting information from metadata -> column_name, timebase, and data_type
     pub stream_compilation: Vec<StreamCompilation>,
     source_data: HashMap<u16, SourceData>,
+    //stream description holds the metadata packet when it first comes in (indicies to correct source and timebase)
     pub stream_description: StreamDescription,
     timebase_data: HashMap<u16, TimebaseData>,
 }
@@ -194,10 +196,11 @@ impl SensorData{
 #[derive(Debug, Serialize, Clone)]
 pub struct DataPoint {
     pub timestamp: f32,
-    pub pointmap: HashMap<String, Value>,
+    pub column_names: Vec<String>,
+    pub data: Vec<f64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UpdatingInformation{
     pub rpc_hash: HashMap<u16, Packet>,
     pub sensor_data: SensorData,
@@ -205,7 +208,7 @@ pub struct UpdatingInformation{
 }
 impl Default for UpdatingInformation{
     fn default() -> UpdatingInformation {
-        UpdatingInformation{rpc_hash: HashMap::new(), sensor_data: SensorData::default(), data_point: DataPoint{timestamp: 0 as f32, pointmap: HashMap::new()}}
+        UpdatingInformation{rpc_hash: HashMap::new(), sensor_data: SensorData::default(), data_point: DataPoint{timestamp: 0 as f32, column_names: Vec::new(), data: Vec::new()}}
     }
 }
 impl UpdatingInformation {
@@ -224,14 +227,16 @@ impl UpdatingInformation {
         }
     }
     pub fn interpret_datapoint(&mut self, streamdata: StreamData) -> () {
-        let mut datum = DataPoint{timestamp: 0.0, pointmap: HashMap::new()};
+        let mut datum = DataPoint{timestamp: 0.0, column_names: Vec::new(), data: Vec::new()};
         let mut i = 0;
         for compilation in &self.sensor_data.stream_compilation{
             datum.timestamp = compilation.timebase_period_us*streamdata.sample_num as f32;
             match compilation.data_type{
                 TYPES::U8 => {
                     if streamdata.payload.len() >= i+1 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::U8(streamdata.payload[i]));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::U8(streamdata.payload[i]));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(streamdata.payload[i] as f64);
                         i = i+1;
                     } else {
                         break;
@@ -239,7 +244,9 @@ impl UpdatingInformation {
                 },
                 TYPES::I8 => {
                     if streamdata.payload.len() >= i+1 {
-                        datum.pointmap.insert(compilation.column_name.clone(),Value::I8(streamdata.payload[i].try_into().unwrap()));
+                        //datum.pointmap.insert(compilation.column_name.clone(),Value::I8(streamdata.payload[i].try_into().unwrap()));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(streamdata.payload[i] as f64);
                         i = i+1;
                     } else {
                         break;
@@ -247,7 +254,9 @@ impl UpdatingInformation {
                 },
                 TYPES::U16 => {
                     if streamdata.payload.len() >= i+2 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::U16(u16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::U16(u16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(u16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap()) as f64);
                         i = i+2;
                     } else {
                         break;
@@ -255,7 +264,9 @@ impl UpdatingInformation {
                 },
                 TYPES::I16 => {
                     if streamdata.payload.len() >= i+2 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::I16(i16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::I16(i16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(i16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap()) as f64);
                         i = i+2;
                     } else {
                         break;
@@ -266,7 +277,9 @@ impl UpdatingInformation {
                 TYPES:: I24 => {}
                 TYPES::U32 => {
                     if streamdata.payload.len() >= i+4 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::U32(u32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::U32(u32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(u32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap()) as f64);
                         i = i+4;
                     } else {
                         break;
@@ -274,7 +287,9 @@ impl UpdatingInformation {
                 },
                 TYPES::I32 => {
                     if streamdata.payload.len() >= i+4 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::I32(i32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::I32(i32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(i32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap()) as f64);
                         i = i+4;
                     } else {
                         break;
@@ -282,7 +297,9 @@ impl UpdatingInformation {
                 },
                 TYPES::U64 => {
                     if streamdata.payload.len() >= i+8 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::U64(u64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::U64(u64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(u64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap()) as f64);
                         i = i+8;
                     } else {
                         break;
@@ -290,7 +307,9 @@ impl UpdatingInformation {
                 },
                 TYPES::I64 => {
                     if streamdata.payload.len() >= i+8 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::I64(i64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::I64(i64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(i64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap()) as f64);
                         i = i+8;
                     } else{
                         break;
@@ -298,7 +317,9 @@ impl UpdatingInformation {
                 },
                 TYPES::F32 => {
                     if streamdata.payload.len() >= i+4 {
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::F32(f32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::F32(f32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(f32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap()) as f64);
                         i = i+4;
                     } else {
                         break;
@@ -307,7 +328,9 @@ impl UpdatingInformation {
                 TYPES::F64 => {
                     if streamdata.payload.len() >= i+8 {
                         //println!("column:{:?}, timestamp {:?}, data {:?}", compilation.column_name, compilation.timebase_period_us*streamdata.sample_num as f32, f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap()));
-                        datum.pointmap.insert(compilation.column_name.clone(), Value::F64(f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        //datum.pointmap.insert(compilation.column_name.clone(), Value::F64(f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
+                        datum.column_names.push(compilation.column_name.clone());
+                        datum.data.push(f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap()));
                         i = i+8;
                     } else {
                         break;
@@ -403,7 +426,7 @@ impl DeviceInfo {
 /// just write a message, then poll for a result, while other message types spool up in the stream
 /// "rx" channel.
 /// 
-pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<tio_packet::Packet>, rpc_send: &crossbeam_channel::Sender<tio_packet::Packet>) -> (){
+pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<Packet>, rpc_send: &crossbeam_channel::Sender<tio_packet::Packet>) -> (){
     use PacketType::*;
     let packet = match raw_packet.packet_type {
         Log => {
@@ -454,6 +477,9 @@ pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &cross
         Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) | Packet::SourceData(_) | Packet::StreamDescription(_) => {
             rx_send.send(packet).unwrap()
         }
+        // Packet::StreamData(_) => {
+        //     rx_send.send(metadata.clone().data_point).unwrap();
+        // }
         Packet::RPCResponseData(_) | Packet::RPCErrorData(_) => {
             rpc_send.send(packet).unwrap()
         }
@@ -471,21 +497,47 @@ pub struct Device {
     pub rpc: channel::Receiver<Packet>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct DeviceDesc {
+    pub url: String,
+    pub desc: String,
+}
+
+impl DeviceDesc {}
+
 impl Device {
     /// Creates a list of possible devices to connect to. Mostly hunting for serial ports, but also
     /// checks for a local TCP proxy (on the default port) and includes a dummy device. In the
     /// future could do mDNS discovery.
-    pub fn enumerate_devices() -> Vec<String> {
+    pub fn get_desc(dev: Device) -> String {
+        dev.tx.send(Packet::RpcReq(RPCRequest::named_simple("dev.desc".to_string()))).unwrap();
+        let p: Packet = dev.rpc.recv().unwrap();
+        match p {
+            Packet::RPCResponseData(resp) => {
+                std::str::from_utf8(&resp.reply_payload).unwrap().to_string()
+            }
+            _ => {
+                "".to_string()
+            }
+        }
+    }
+
+    pub fn enumerate_devices() -> Vec<DeviceDesc> {
         println!("dummy://dummy");
-        let mut devices = vec!["dummy://dummy".to_string()];
+        let mut devices = vec![DeviceDesc{url: "dummy://dummy".to_string(),
+                                             desc: "Dummy device".to_string()}];
         // see if proxy is running locally
+        let mut proxy_running = false;
         if let Ok(conn) = TcpStream::connect_timeout(
             &SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 7855),
             Duration::from_millis(100),
         ) {
+            proxy_running = true;
             conn.shutdown(Shutdown::Both).unwrap();
-            println!("tcp://localhost:7855");
-            devices.push("tcp://localhost:7855".to_string());
+            let url= "tcp://localhost:7855".to_string();
+            println!("{}", url);
+            let dev = Device::connect_tcp(url.clone()).unwrap();
+            devices.push(DeviceDesc{url: url,desc: Device::get_desc(dev)});
         }
         if let Ok(ports) = serialport::available_ports() {
             for p in ports.iter() {
@@ -509,7 +561,19 @@ impl Device {
                         println!("serial://{}", p.port_name);
                     }
                 }
-                devices.push(format!("serial://{}", p.port_name));
+                let url = format!("serial://{}", p.port_name);
+                devices.push(DeviceDesc{url: url.clone(),
+                    desc: {
+                        if proxy_running {
+                            "No desc with proxy".to_string()
+                        } else {
+                            let devres = Device::connect_serial(url);
+                            match devres {
+                                Ok(dev) => {Device::get_desc(dev)}
+                                _ => {"Failed to get desc".to_string()}
+                            }
+                        }
+                    }});
             }
         } else {
             // TODO: real error handling (or at least warning)
@@ -545,7 +609,7 @@ impl Device {
         let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) =
             channel::bounded(10);
         let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
-        let (rx_sender, rx_receiver) = channel::bounded(10);
+        let (rx_sender, rx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         let req = Packet::RpcReq(RPCRequest::named_simple("data.send_all".to_string()));
         tx_sender.send(req).unwrap();
         thread::spawn(move || {
@@ -612,18 +676,22 @@ impl Device {
             .timeout(Duration::from_millis(50))
             .open()?;
 
+        // Minimal way to switch to binary mode.
+        let to_bin: Vec<u8> = vec![0xC0, 0x05, 0x00, 0x00, 0x00, 0x2E, 0x2F, 0x9A, 0x16, 0xC0];
+        port.write_all(&to_bin)?;
+
         // send "send_all"
-        let req = Packet::RpcReq(RPCRequest::named_simple("dev.send_all".to_string()));
-        let msg = req.to_bytes().unwrap();
-        port.write_all(&tio_slip_encode(&msg))?;
+        //let req = Packet::RpcReq(RPCRequest::named_simple("data.send_all".to_string()));
+         //let msg = req.to_bytes().unwrap();
+         //port.write_all(&tio_slip_encode(&msg))?;
 
         // do a read to flush any random input
         let mut serial_buf: Vec<u8> = vec![0; 1000];
         port.read(serial_buf.as_mut_slice())?;
 
-        let (tx_sender, tx_receiver) = channel::bounded(0);
-        let (rx_sender, rx_receiver) = channel::bounded(0);
-        let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(0);
+        let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
+        let (rx_sender, rx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
+        let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         thread::spawn(move || {
             // first read until END to clear any previous buffer stuff
             //
@@ -645,10 +713,11 @@ impl Device {
             loop {
                 // do a non-blocking recv for any outgoing packets
                 match tx_receiver.try_recv() {
-                    Ok(_packet) => {
+                    Ok(packet) => {
                         // TODO: send this packet down the pipe as bytes
                         //stream.write(packet.as_bytes());
-                        //buf_port.write_all(&tio_slip_encode(&msg));
+                        let portw = buf_port.get_mut();
+                        portw.write_all(&tio_slip_encode(&packet.to_bytes().unwrap())).unwrap();
                         continue;
                     }
                     Err(channel::TryRecvError::Empty) => (),
@@ -694,7 +763,7 @@ impl Device {
     fn connect_dummy() -> Result<Device> {
         // log: "starting dummy data loop"
         let (tx_sender, tx_receiver) = channel::bounded(0);
-        let (rx_sender, rx_receiver) = channel::bounded(0);
+        let (rx_sender, rx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         let (_rpc_sender, rpc_receiver) = channel::bounded(0);
         thread::spawn(move || Device::loop_dummy(rx_sender, tx_receiver));
         Ok(Device {
@@ -721,8 +790,8 @@ impl Device {
             if count % 25 == 0 {
                 rx_sender
                     .send(Packet::Log(LogMessage::warn(
-                        "this is a dummy log message".into(),
-                    )))
+                         "this is a dummy log message".into(),
+                     )))
                     .unwrap();
             }
             rx_sender

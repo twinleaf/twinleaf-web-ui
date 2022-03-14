@@ -21,6 +21,10 @@ export type DataDevicePacket = {
 
 export type DevicePacket = LogDevicePacket | DataDevicePacket;
 export type DeviceId = string;
+export type DeviceDesc = {
+  url: string;
+  desc: string;
+};
 export type DeviceInfo = {
   channels: string[];
   name: string;
@@ -50,7 +54,7 @@ export const TauriAPI: API = {
     });
   },
   enumerateDevices: async () => {
-    const resp: string[] = await invoke("enumerate_devices");
+    const resp: DeviceDesc[] = await invoke("enumerate_devices");
     console.log(resp);
     return resp;
   },
@@ -153,11 +157,11 @@ export const DemoAPI: API = {
   enumerateDevices: async (): Promise<DeviceId[]> => {
     await new Promise((r) => setTimeout(r, 100));
     return Promise.resolve([
-      "dummy 10Hz",
-      "dummy 100Hz",
-      "dummy 1000Hz",
+      {url:"dummy 10Hz", desc: ""},
+      {url:"dummy 100Hz", desc: ""},
+      {url:"dummy 1000Hz", desc: ""},
       ...("ontouchstart" in window || window.location.hostname === "localhost"
-        ? ["device orientation (requires mobile device)"]
+        ? [{url:"device orientation (requires mobile device)",desc: ""}]
         : []),
     ]);
   },
