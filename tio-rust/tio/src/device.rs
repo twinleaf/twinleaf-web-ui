@@ -342,6 +342,7 @@ impl UpdatingInformation {
             //println!("{:?}: {:?}", compilation, datum.get(compilation).unwrap());
         }
         if datum.data.is_empty(){
+            datum.timestamp = streamdata.sample_num as f32;
             datum.data = streamdata.as_f32().into_iter().map(|v| v as f64).collect();
         }
         self.data_point =  datum;
