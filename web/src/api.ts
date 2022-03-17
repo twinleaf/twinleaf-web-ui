@@ -15,6 +15,7 @@ export type LogDevicePacket = {
 
 export type DataDevicePacket = {
   packet_type: "data";
+  timestamp: number;
   sample_number: number;
   data_floats: number[];
 };
@@ -30,7 +31,7 @@ export type DeviceInfo = {
   name: string;
 };
 
-export type APIType = "Tauri" | "WebSerial" | "WebSocket" | "Demo";
+export type APIType = "Tauri" | "Demo";
 
 export interface API {
   type: APIType;
@@ -39,7 +40,7 @@ export interface API {
   enumerateDevices: () => Promise<DeviceId[]>;
   connectDevice: (uri: string) => Promise<DeviceInfo>;
   disconnect: () => Promise<void>;
-  data_rate: (value: number) => Promise<void>
+  data_rate: (value: number) => Promise<number>
 }
 
 export const TauriAPI: API = {
@@ -66,8 +67,9 @@ export const TauriAPI: API = {
   disconnect: async () => {
     await invoke("disconnect");
   },
-  data_rate: async (value: number) => {
-    await invoke("data_rate", {value: value})
+  data_rate: async (value: number | null) => {
+    const rate: number = await invoke("data_rate", {value: value});
+    return rate;
   },
 };
 
@@ -94,6 +96,7 @@ function handleOrientation(e: DeviceOrientationEvent) {
   if (demoOrientationCb && e.alpha !== null && e.beta !== null && e.gamma !== null) {
     demoOrientationCb({
       packet_type: "data",
+      timestamp: demoSampleNumber++,
       sample_number: demoSampleNumber++,
       data_floats: [e.alpha / 360, e.beta / 180, e.gamma / 180],
     });
@@ -114,6 +117,7 @@ export const DemoAPI: API = {
     const sendDataPacket = () =>
       cb({
         packet_type: "data",
+        timestamp: demoSampleNumber++,
         sample_number: demoSampleNumber++,
         data_floats: [
           2 * randn_bm() - 1,

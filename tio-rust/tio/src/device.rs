@@ -230,7 +230,7 @@ impl UpdatingInformation {
         let mut datum = DataPoint{timestamp: 0.0, column_names: Vec::new(), data: Vec::new()};
         let mut i = 0;
         for compilation in &self.sensor_data.stream_compilation{
-            datum.timestamp = compilation.timebase_period_us*streamdata.sample_num as f32;
+            datum.timestamp = (compilation.timebase_period_us*streamdata.sample_num as f32)/1000000 as f32;
             match compilation.data_type{
                 TYPES::U8 => {
                     if streamdata.payload.len() >= i+1 {
@@ -340,6 +340,9 @@ impl UpdatingInformation {
                 TYPES::NoneType => {},
             };
             //println!("{:?}: {:?}", compilation, datum.get(compilation).unwrap());
+        }
+        if datum.data.is_empty(){
+            datum.data = streamdata.as_f32().into_iter().map(|v| v as f64).collect();
         }
         self.data_point =  datum;
 
@@ -692,6 +695,8 @@ impl Device {
         let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         let (rx_sender, rx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
+        let req = Packet::RpcReq(RPCRequest::named_simple("data.send_all".to_string()));
+        tx_sender.send(req).unwrap();
         thread::spawn(move || {
             // first read until END to clear any previous buffer stuff
             //
@@ -722,7 +727,8 @@ impl Device {
                     }
                     Err(channel::TryRecvError::Empty) => (),
                     //Err(e) => return Err(e).with_context(|| "problem with tx_receiver TCP channel"),
-                    Err(e) => Err(e).unwrap(),
+                    Err(channel::TryRecvError::Disconnected) => {//println!("Channels disconnected");
+                    break;}
                 };
 
                 slip_buf.clear();
@@ -746,13 +752,17 @@ impl Device {
                 };
             }
         });
-        Ok(Device {
+        let mut device = Device {
             uri: uri,
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo::new_vmr("Unknown Serialport VMR Device".into()),
-        })
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new()}};
+
+        let columns = device.column_names();
+        let name = device.name();
+        device.info = DeviceInfo::new_device(name, columns);
+        Ok(device)
     }
 
     /// Mock endpoint that tries to look like a VMR device.
@@ -881,10 +891,18 @@ impl Device {
     
     }
 
-    pub fn data_rate(&self, value: String) -> (){
+    pub fn data_rate(&self, value: Option<f32>) -> f32 {
         //ideally updating_information would be accessible by entire Device class
         let mut updating_information = UpdatingInformation::default();
-        self.send_and_interpret_rpc("data.rate".to_string(), Some(value) , &mut updating_information);
+        let (_rpc_type, response) = match value {
+            Some(v) => {self.send_and_interpret_rpc("data.rate".to_string(), Some(v.to_string()) , &mut updating_information)}
+            None => {self.send_and_interpret_rpc("data.rate".to_string(), None , &mut updating_information)}
+        };
+        match response {
+            Packet:: RPCResponseData(sd) => {f32::from_le_bytes(sd.reply_payload.try_into().unwrap())}
+            _ => {panic!("Error")}
+        }
+        
     }
 
     pub fn column_names(&self) -> Vec<String> {

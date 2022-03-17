@@ -171,7 +171,7 @@ const Devices = (props: DevicesProps) => {
               </Menu.Item>
               <Menu.Item>
                 using {apiType === "Tauri" ? "Rust Proxy" : apiType} to find devices
-                <Popup trigger={<Icon name="help" />} hoverable position="top center" wide="very">
+                <Popup trigger={<Icon name="help" />} hoverable position="top center">
                   <Grid centered divided columns="equal">
                     {typeof window.__TAURI__ !== "undefined" && (
                       <Grid.Column textAlign="center" verticalAlign="top">
@@ -186,28 +186,6 @@ const Devices = (props: DevicesProps) => {
                         )}
                       </Grid.Column>
                     )}
-                    <Grid.Column textAlign="center" verticalAlign="top">
-                      <Header as="h4">WebSerial</Header>
-                      <p style={{ height: 120 }}>
-                        Discover Twinleaf devices over TIO via WebSerial
-                      </p>
-                      {apiType === "WebSerial" ? (
-                        <Button disabled>in use</Button>
-                      ) : (
-                        <Button disabled>switch (experimental)</Button>
-                      )}
-                    </Grid.Column>
-                    <Grid.Column textAlign="center" verticalAlign="top">
-                      <Header as="h4">WebSocket</Header>
-                      <p style={{ height: 120 }}>
-                        Discover Twinleaf devices through a tio-proxy via WebSocket communication
-                      </p>
-                      {apiType === "WebSocket" ? (
-                        <Button disabled>in use</Button>
-                      ) : (
-                        <Button disabled>not yet</Button>
-                      )}
-                    </Grid.Column>
                     <Grid.Column textAlign="center" verticalAlign="top">
                       <Header as="h4">Demo</Header>
                       <p style={{ height: 120 }}>
@@ -268,10 +246,25 @@ type PlotPaneProps = {
 const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [windowSize, setWindowSize] = useState(dataBuffer.size);
-  const [initialRate, setDataRate] = useState(40);
+  //const startingRate = API.data_rate(null);
+  const [initialRate, setDataRate] = useState(20);
   const [paused, setPaused] = useState(false);
 
   const colors = ["red", "green", "blue"];
+
+  const needsRPC = true;//typeof window.__TAURI__ !== "undefined";
+  const dataSlider = needsRPC ? 
+  <Slider
+        min={20}
+        max={1000}
+        onChange={(n: number) => {
+          API.data_rate(n)
+          setDataRate(n)
+        }}
+        initial={initialRate}
+      />
+      : null;
+
 
   return (
     <div>
@@ -282,7 +275,7 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
         Pause plotting
       </Button>
       <Slider
-        min={100}
+        min={10}
         max={4000}
         onChange={(n: number) => {
           dataBuffer.setWindowSize(n);
@@ -291,15 +284,7 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
         initial={dataBuffer.size}
       />
       {windowSize} samples
-      <Slider
-        min={20}
-        max={1000}
-        onChange={(n: number) => {
-          API.data_rate(n)
-          setDataRate(n)
-        }}
-        initial={initialRate}
-      />
+      {dataSlider} 
       {initialRate} Hz
       {dataBuffer.channelNames.map((_name, i) => (
         <TracePlot

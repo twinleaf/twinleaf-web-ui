@@ -70,8 +70,8 @@ impl DeviceJuggler {
         Device::enumerate_devices()
     }
 
-    pub fn data_rate(&self, value: f32) -> () {
-        Device::data_rate(&self.device.as_ref().unwrap(), value.to_string())
+    pub fn data_rate(&self, value: Option<f32>) -> f32 {
+        Device::data_rate(&self.device.as_ref().unwrap(), value)
     }
 
     /// Just clears the Options, which should result in the Device getting "dropped", which should
@@ -127,9 +127,11 @@ impl DeviceJuggler {
                             .unwrap();
                         }
                         StreamData(sd) => {
+                            //println!("{:?}", updating_information.data_point.timestamp);
                             app.emit_all(
                                 "device-packet",
                                 DeviceMessage::new_data(
+                                    updating_information.data_point.timestamp,
                                     sd.sample_num,
                                     updating_information.data_point.data.clone()
                                 ),
@@ -171,6 +173,7 @@ struct DeviceMessage {
     rpc_error: Option<String>,
     sample_number: Option<u32>,
     data_floats: Option<Vec<f64>>,
+    timestamp: Option<f32>,
 }
 
 impl DeviceMessage {
@@ -184,9 +187,10 @@ impl DeviceMessage {
             rpc_error: None,
             sample_number: None,
             data_floats: None,
+            timestamp: None,
         }
     }
-    fn new_data(sample_number: u32, data: Vec<f64>) -> DeviceMessage {
+    fn new_data(timestamp: f32, sample_number: u32, data: Vec<f64>) -> DeviceMessage {
         DeviceMessage {
             packet_type: "data".to_string(),
             log_type: None,
@@ -196,6 +200,7 @@ impl DeviceMessage {
             rpc_error: None,
             sample_number: Some(sample_number),
             data_floats: Some(data),
+            timestamp: Some(timestamp),
         }
     }
 }
@@ -233,10 +238,10 @@ fn disconnect(state: tauri::State<Arc<Mutex<DeviceJuggler>>>) -> Result<String, 
 #[tauri::command]
 fn data_rate(
     state: tauri::State<Arc<Mutex<DeviceJuggler>>>,
-    value: f32,
-) -> () {
+    value: Option<f32>,
+) -> f32 {
     let juggler = state.lock().unwrap();
-    juggler.data_rate(value);
+    return juggler.data_rate(value);
 }
 
 fn main() {

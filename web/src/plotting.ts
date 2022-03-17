@@ -45,9 +45,10 @@ export class DataBuffer {
     }
     this.sampleReceivedTimes = this.sampleReceivedTimes.slice(-size);
     this.sampleNums = this.sampleNums.slice(-size);
-    this.positions = [...Array(this.sampleNums.length).keys()].map(
-      (x) => x - this.sampleNums.length
-    );
+    this.positions = this.positions.slice(-size);
+    // this.positions = [...Array(this.sampleNums.length).keys()].map(
+    //   (x) => x - this.sampleNums.length
+    // );
     this.alreadySeen = new WeakSet();
   }
   // Has the side effect of marking the reader as alreadySeen,
@@ -67,6 +68,7 @@ export class DataBuffer {
     }
     this.sampleReceivedTimes.push(performance.now());
     this.sampleNums.push(frame.sample_number);
+    this.positions.push(frame.timestamp);
     if (this.sampleNums.length > this.size) {
       this.sampleNums.shift();
       this.sampleReceivedTimes.shift();
