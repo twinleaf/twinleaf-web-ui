@@ -29,6 +29,7 @@ export type DeviceDesc = {
 export type DeviceInfo = {
   channels: string[];
   name: string;
+  initialRate: number;
 };
 
 export type APIType = "Tauri" | "Demo";
@@ -37,7 +38,7 @@ export interface API {
   type: APIType;
   // the unlisten function returned by listenToPackets is synchronous
   listenToPackets: (cb: (packet: DevicePacket) => void) => Promise<() => void>;
-  enumerateDevices: () => Promise<DeviceId[]>;
+  enumerateDevices: () => Promise<DeviceDesc[]>;
   connectDevice: (uri: string) => Promise<DeviceInfo>;
   disconnect: () => Promise<void>;
   data_rate: (value: number) => Promise<number>
@@ -62,6 +63,7 @@ export const TauriAPI: API = {
   connectDevice: async (uri: string) => {
     const loc = { uri };
     const resp: DeviceInfo = await invoke("connect_device", loc);
+    console.log(resp);
     return resp;
   },
   disconnect: async () => {
@@ -158,7 +160,7 @@ export const DemoAPI: API = {
     return Promise.resolve(stopListening);
   },
 
-  enumerateDevices: async (): Promise<DeviceId[]> => {
+  enumerateDevices: async (): Promise<DeviceDesc[]> => {
     await new Promise((r) => setTimeout(r, 100));
     return Promise.resolve([
       {url:"dummy 10Hz", desc: ""},
@@ -198,6 +200,7 @@ export const DemoAPI: API = {
     return Promise.resolve({
       name: "demo '" + uri + "'",
       channels,
+      initialRate: 20,
     });
   },
   disconnect: () => {
@@ -205,72 +208,72 @@ export const DemoAPI: API = {
     demoOrientationConnected = false;
     return Promise.resolve();
   },
-  data_rate: async (value: number) => {},
+  data_rate: async (value: number) => {return value;},
 };
 
 /////////////////////////////////////////////////////////////////
 // There was discussion of a WebSerial API
-export class WebSerialAPI implements API {
-  // class because I'm guessing we'll need some state
-  type = "WebSocket" as const;
-  static instance: WebSerialAPI;
-  static getInstance() {
-    if (!this.instance) {
-      this.instance = new WebSerialAPI();
-    }
-    return this.instance;
-  }
-  async listenToPackets(_cb: (packet: DevicePacket) => void) {
-    // WebSerial stuff
-    throw new Error("not implemented");
-    return Promise.resolve(function cleanup() {});
-  }
-  enumerateDevices() {
-    throw new Error("not implemented");
-    return Promise.resolve([]);
-  }
-  connectDevice(_uri: string) {
-    throw new Error("not implemented");
-    return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
-  }
-  async disconnect() {
-    throw new Error("not implemented");
-  }
-  async data_rate() {
-    throw new Error("not implemented");
-  }
-}
+// export class WebSerialAPI implements API {
+//   // class because I'm guessing we'll need some state
+//   type = "WebSocket" as const;
+//   static instance: WebSerialAPI;
+//   static getInstance() {
+//     if (!this.instance) {
+//       this.instance = new WebSerialAPI();
+//     }
+//     return this.instance;
+//   }
+//   async listenToPackets(_cb: (packet: DevicePacket) => void) {
+//     // WebSerial stuff
+//     throw new Error("not implemented");
+//     return Promise.resolve(function cleanup() {});
+//   }
+//   enumerateDevices() {
+//     throw new Error("not implemented");
+//     return Promise.resolve([]);
+//   }
+//   connectDevice(_uri: string) {
+//     throw new Error("not implemented");
+//     return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
+//   }
+//   async disconnect() {
+//     throw new Error("not implemented");
+//   }
+//   async data_rate() {
+//     throw new Error("not implemented");
+//   }
+// }
 
 /////////////////////////////////////////////////////////////////
 // There was discussion of a ws API, websockets were implemented
-// on some hardware.
-export class WebSocketAPI implements API {
-  // class because I'm guessing we'll need some state
-  type = "WebSocket" as const;
-  static instance: WebSocketAPI;
-  static getInstance() {
-    if (!this.instance) {
-      this.instance = new WebSocketAPI();
-    }
-    return this.instance;
-  }
-  async listenToPackets(_cb: (packet: DevicePacket) => void) {
-    // WebSocket stuff
-    throw new Error("not implemented");
-    return Promise.resolve(function cleanup() {});
-  }
-  enumerateDevices() {
-    throw new Error("not implemented");
-    return Promise.resolve([]);
-  }
-  connectDevice(_uri: string) {
-    throw new Error("not implemented");
-    return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
-  }
-  async disconnect() {
-    throw new Error("not implemented");
-  }
-  async data_rate() {
-    throw new Error("not implemented");
-  }
-}
+// // on some hardware.
+// export class WebSocketAPI implements API {
+//   // class because I'm guessing we'll need some state
+//   type = "WebSocket" as const;
+//   static instance: WebSocketAPI;
+//   static getInstance() {
+//     if (!this.instance) {
+//       this.instance = new WebSocketAPI();
+//     }
+//     return this.instance;
+//   }
+//   async listenToPackets(_cb: (packet: DevicePacket) => void) {
+//     // WebSocket stuff
+//     throw new Error("not implemented");
+//     return Promise.resolve(function cleanup() {});
+//   }
+//   enumerateDevices() {
+//     throw new Error("not implemented");
+//     return Promise.resolve([]);
+//   }
+//   connectDevice(_uri: string) {
+//     throw new Error("not implemented");
+//     return Promise.resolve({ name: "TODO", channels: ["TODOa"] });
+//   }
+//   async disconnect() {
+//     throw new Error("not implemented");
+//   }
+//   async data_rate() {
+//     throw new Error("not implemented");
+//   }
+// }

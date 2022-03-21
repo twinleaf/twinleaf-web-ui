@@ -169,11 +169,12 @@ export const TracePlot = ({
       ],
     }}
     updatePlot={(u, dataBuffer, el) => {
-      const xs = dataBuffer.getXs();
+      const xs = dataBuffer.getXs(false);
       u.setData([xs, dataBuffer.data[channelIndex]], false);
+      //console.log(xs.length);
       //u.setScale("x", { min: -dataBuffer.size + 1, max: 0 });
       //don't have the data rate yet so I am just manually putting in the rate for now
-      u.setScale("x", { min: xs[0], max: xs[0] + (dataBuffer.size +1)/20});
+      u.setScale("x", { min: xs[0], max: xs[0] + (dataBuffer.size +1)/dataBuffer.dataRate});
       //u.setScale("x", { min: xs[0] - ((dataBuffer.size+1)/20), max: xs[0]});
       if (showTitle) {
         (el.querySelector(".u-title")! as HTMLDivElement).innerText =

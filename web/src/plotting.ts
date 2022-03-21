@@ -24,6 +24,7 @@ export class DataBuffer {
   sampleReceivedTimes: number[] = [];
   alreadySeen: WeakSet<any> = new WeakSet();
   scheduledPlotUpdate: number;
+  dataRate: number;
 
   constructor(info: DeviceInfo, size = 1000) {
     this.deviceName = info.name;
@@ -32,6 +33,7 @@ export class DataBuffer {
     this.channelNames.forEach(() => {
       this.data.push([]);
     });
+    this.dataRate = 20;
     this.size = size;
     this.positions = [];
   }
@@ -59,6 +61,10 @@ export class DataBuffer {
     this.alreadySeen.add(reader);
     return seen;
   }
+
+  setDataRate = (rate: number) => {
+    this.dataRate = rate;
+  }
   // Should be called for every data packet delivered
   addFrame = (frame: DataDevicePacket) => {
     this.alreadySeen = new WeakSet();
@@ -69,6 +75,8 @@ export class DataBuffer {
     this.sampleReceivedTimes.push(performance.now());
     this.sampleNums.push(frame.sample_number);
     this.positions.push(frame.timestamp);
+    if (this.positions.length > this.size) this.positions.shift();
+
     if (this.sampleNums.length > this.size) {
       this.sampleNums.shift();
       this.sampleReceivedTimes.shift();

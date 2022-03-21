@@ -3,6 +3,7 @@ import {
   API,
   APIType,
   DemoAPI,
+  DeviceDesc,
   DeviceId,
   DeviceInfo,
   DevicePacket,
@@ -62,7 +63,7 @@ export const useDevices = (
   connect: (id: DeviceId) => Promise<void>;
   connectedDevice: string | undefined;
   dataBuffer: DataBuffer | undefined;
-  devices: Record<DeviceDesc, DeviceInfo | undefined>;
+  devices: Record<DeviceDesc["url"], DeviceInfo | undefined>;
   disconnect: () => Promise<void>;
   updateDevices: () => void;
 } => {
@@ -87,6 +88,7 @@ export const useDevices = (
     setDevices((devices) => ({ ...devices, [deviceId]: info }));
 
     dataBuffer.current = new DataBuffer(info, 1000);
+    dataBuffer.current.setDataRate(info.initialRate);
 
     const onPacket = (packet: DevicePacket) => {
       if (packet.packet_type === "data") {
@@ -114,7 +116,7 @@ export const useDevices = (
     await disconnect();
     setDevices({});
     const deviceDescs = await api.enumerateDevices();
-    const devices = Object.fromEntries(deviceDescs.map((desc) => [desc.url, [desc.desc, undefined]]));
+    const devices = Object.fromEntries(deviceDescs.map((desc) => [desc.url, undefined]));
     setDevices(devices);
     // we could connect+disconnect each device here to update deviceInfo, but only if
     // it is safe to connect to arbitrary devices, which may not be Twinleaf devices.

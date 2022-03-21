@@ -247,7 +247,7 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [windowSize, setWindowSize] = useState(dataBuffer.size);
   //const startingRate = API.data_rate(null);
-  const [initialRate, setDataRate] = useState(20);
+  const [initialRate, setDataRate] = useState(dataBuffer.dataRate);
   const [paused, setPaused] = useState(false);
 
   const colors = ["red", "green", "blue"];
@@ -259,6 +259,7 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
         max={1000}
         onChange={(n: number) => {
           API.data_rate(n)
+          dataBuffer.setDataRate(n)
           setDataRate(n)
         }}
         initial={initialRate}

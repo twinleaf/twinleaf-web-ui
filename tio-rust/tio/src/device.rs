@@ -359,6 +359,7 @@ impl UpdatingInformation {
 pub struct DeviceInfo {
     pub name: String,
     pub channels: Vec<String>,
+    pub initialRate: f32,
     // TODO: channel data types? rate? etc
     // TODO: firmware version?
     // TODO: hw version?
@@ -385,6 +386,7 @@ impl DeviceInfo {
                 "gyro.y".into(),
                 "gyro.z".into(),
             ],
+            initialRate: 20 as f32,
         }
     }
 
@@ -396,6 +398,7 @@ impl DeviceInfo {
         DeviceInfo {
             name,
             channels: channels,
+            initialRate: 20 as f32,
         }
     }
 }
@@ -664,7 +667,7 @@ impl Device {
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo{name: "".to_string(), channels: Vec::new()}};
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initialRate: 20 as f32}};
 
         let columns = device.column_names();
         let name = device.name();
@@ -758,7 +761,7 @@ impl Device {
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo{name: "".to_string(), channels: Vec::new()}};
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initialRate: 20 as f32}};
 
         let columns = device.column_names();
         let name = device.name();
