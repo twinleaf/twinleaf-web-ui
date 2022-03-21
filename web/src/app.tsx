@@ -245,7 +245,7 @@ type PlotPaneProps = {
 };
 const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-  const [windowSize, setWindowSize] = useState(dataBuffer.size);
+  const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
   //const startingRate = API.data_rate(null);
   const [initialRate, setDataRate] = useState(dataBuffer.dataRate);
   const [paused, setPaused] = useState(false);
@@ -276,15 +276,15 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
         Pause plotting
       </Button>
       <Slider
-        min={10}
-        max={4000}
+        min={1}
+        max={400}
         onChange={(n: number) => {
-          dataBuffer.setWindowSize(n);
+          dataBuffer.setWindowSize(n*dataBuffer.dataRate);
           setWindowSize(n);
         }}
-        initial={dataBuffer.size}
+        initial={windowSize}//dataBuffer.size/dataBuffer.dataRate}
       />
-      {windowSize} samples
+      {windowSize} seconds 
       {dataSlider} 
       {initialRate} Hz
       {dataBuffer.channelNames.map((_name, i) => (
