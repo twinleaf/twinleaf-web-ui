@@ -233,26 +233,30 @@ impl UpdatingInformation {
             datum.timestamp = (compilation.timebase_period_us*streamdata.sample_num as f32)/1000000 as f32;
             match compilation.data_type{
                 TYPES::U8 => {
+                    //println!("u8");
                     if streamdata.payload.len() >= i+1 {
                         //datum.pointmap.insert(compilation.column_name.clone(), Value::U8(streamdata.payload[i]));
                         datum.column_names.push(compilation.column_name.clone());
-                        datum.data.push(streamdata.payload[i] as f64);
+                        datum.data.push(streamdata.payload[i] as u8 as f64);
                         i = i+1;
                     } else {
                         break;
                     }
                 },
                 TYPES::I8 => {
+                    //println!("i8 for {:?}", compilation.column_name);
                     if streamdata.payload.len() >= i+1 {
                         //datum.pointmap.insert(compilation.column_name.clone(),Value::I8(streamdata.payload[i].try_into().unwrap()));
                         datum.column_names.push(compilation.column_name.clone());
-                        datum.data.push(streamdata.payload[i] as f64);
+                        //println!("{:?}", streamdata.payload[i] as i8 as f64);
+                        datum.data.push(streamdata.payload[i] as i8 as f64);
                         i = i+1;
                     } else {
                         break;
                     }
                 },
                 TYPES::U16 => {
+                    //println!("u16");
                     if streamdata.payload.len() >= i+2 {
                         //datum.pointmap.insert(compilation.column_name.clone(), Value::U16(u16::from_le_bytes(streamdata.payload[i..i+2].try_into().unwrap())));
                         datum.column_names.push(compilation.column_name.clone());
@@ -316,6 +320,7 @@ impl UpdatingInformation {
                     }
                 },
                 TYPES::F32 => {
+                    //println!("f32 for {:?}", compilation.column_name);
                     if streamdata.payload.len() >= i+4 {
                         //datum.pointmap.insert(compilation.column_name.clone(), Value::F32(f32::from_le_bytes(streamdata.payload[i..i+4].try_into().unwrap())));
                         datum.column_names.push(compilation.column_name.clone());
@@ -326,6 +331,7 @@ impl UpdatingInformation {
                     }
                 },
                 TYPES::F64 => {
+                    //println!("f64 for {:?}", compilation.column_name);
                     if streamdata.payload.len() >= i+8 {
                         //println!("column:{:?}, timestamp {:?}, data {:?}", compilation.column_name, compilation.timebase_period_us*streamdata.sample_num as f32, f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap()));
                         //datum.pointmap.insert(compilation.column_name.clone(), Value::F64(f64::from_le_bytes(streamdata.payload[i..i+8].try_into().unwrap())));
