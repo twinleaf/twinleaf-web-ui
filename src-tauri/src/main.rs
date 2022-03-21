@@ -95,8 +95,11 @@ impl DeviceJuggler {
         self.packet_tx = Some(tx_sender);
         let device_tx = self.device.as_ref().unwrap().rx.clone();
         thread::spawn(move || DeviceJuggler::loop_packets(app, device_tx, tx_receiver));
-
-        Ok(self.device.as_ref().unwrap().info.clone())
+        let rate = self.device.as_ref().unwrap().data_rate(None);
+        //self.device.as_ref().unwrap().info.initialRate = rate;
+        let mut info = self.device.as_ref().unwrap().info.clone();
+        info.initialRate = rate;
+        return Ok(info);
     }
 
     /// This event loop (thread) does need to exist, but could probably be simplified even further.
