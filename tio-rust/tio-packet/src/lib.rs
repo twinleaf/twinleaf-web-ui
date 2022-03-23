@@ -443,7 +443,7 @@ pub struct StreamDescription {
     pub stream_period:u32,
     stream_offset:u32,
     stream_sample_number: u64,
-    stream_total_components:u16,
+    pub stream_total_components:u16,
     stream_flags:u16,
     pub stream_info: Vec<StreamInfo>,
 }

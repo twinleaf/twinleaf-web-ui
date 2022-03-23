@@ -130,9 +130,9 @@ impl ErrorCode {
 
 #[derive(Debug,PartialEq, Clone)]
 pub struct StreamCompilation {
-    column_name: String,
-    timebase_period_us: f32,
-    data_type: TYPES,
+    pub column_name: String,
+    pub timebase_period_us: f32,
+    pub data_type: TYPES,
 }
 
 #[derive(Debug, Clone)]
@@ -229,8 +229,8 @@ impl UpdatingInformation {
     pub fn interpret_datapoint(&mut self, streamdata: StreamData) -> () {
         let mut datum = DataPoint{timestamp: 0.0, column_names: Vec::new(), data: Vec::new()};
         let mut i = 0;
+        datum.timestamp = (&self.sensor_data.stream_compilation[0].timebase_period_us*streamdata.sample_num as f32)/1000000 as f32;
         for compilation in &self.sensor_data.stream_compilation{
-            datum.timestamp = (compilation.timebase_period_us*streamdata.sample_num as f32)/1000000 as f32;
             match compilation.data_type{
                 TYPES::U8 => {
                     //println!("u8");
@@ -347,6 +347,13 @@ impl UpdatingInformation {
             };
             //println!("{:?}: {:?}", compilation, datum.get(compilation).unwrap());
         }
+        // if (datum.column_names.len() < self.sensor_data.stream_description.stream_total_components as usize) && !self.data_point.column_names.is_empty() {
+        //     println!("Here");
+        //     for i in (self.sensor_data.stream_description.stream_total_components as usize - datum.column_names.len())..self.sensor_data.stream_description.stream_total_components as usize{
+        //         datum.column_names.push(self.data_point.column_names[i].clone());
+        //         datum.data.push(self.data_point.data[i].clone());
+        //     }
+        // }
         if datum.data.is_empty(){
             datum.timestamp = streamdata.sample_num as f32;
             datum.data = streamdata.as_f32().into_iter().map(|v| v as f64).collect();

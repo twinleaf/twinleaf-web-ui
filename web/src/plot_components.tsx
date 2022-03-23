@@ -221,7 +221,7 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlo
           {
             value: (_self, rawValue) => rawValue.toFixed(2) + "Hz",
           },
-          ...dataBuffer.channelNames.slice(0,3).map((name, i) => ({
+          ...dataBuffer.channelNames.map((name, i) => ({
             stroke: colors[i % colors.length],
             label: name,
             spanGaps: true,
