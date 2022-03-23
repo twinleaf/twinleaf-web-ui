@@ -170,9 +170,11 @@ export const TracePlot = ({
     }}
     updatePlot={(u, dataBuffer, el) => {
       const xs = dataBuffer.getXs(false);
-      u.setData([xs, dataBuffer.data[channelIndex]], false);
       //console.log(xs.length);
-      u.setScale("x", { min: xs[0], max: xs[xs.length-1]});//xs[0] + (dataBuffer.size +1)/dataBuffer.dataRate});
+      u.setData([xs, dataBuffer.data[channelIndex]], false);
+      if (xs.length > 1) {
+        u.setScale("x", { min: xs[0], max: xs[xs.length-1]});//xs[0] + (dataBuffer.size +1)/dataBuffer.dataRate});
+      }
       if (showTitle) {
         (el.querySelector(".u-title")! as HTMLDivElement).innerText =
           dataBuffer.deviceName + " - receiving at " + fpsFormat(dataBuffer.observedHz()) + " Hz";
