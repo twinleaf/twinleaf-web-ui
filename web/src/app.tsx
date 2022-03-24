@@ -68,6 +68,8 @@ export const App = () => {
           <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {3}/>
         ) : activePane === "Heater" && dataBuffer && dataBuffer.viewers.includes("Heater") ? (
           <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {2}/>
+        ) : activePane === "Laser" && dataBuffer && dataBuffer.viewers.includes("Laser") ? (
+          <LaserPane dataBuffer={dataBuffer} api ={api} />
         ) : null}
       </Container>
     </>
@@ -249,6 +251,9 @@ const TopBar = ({
       <Menu.Item name="Heater" active={activePane === "Heater"} onClick={handleItemClick}>
         Heater
       </Menu.Item>
+      <Menu.Item name="Laser" active={activePane === "Laser"} onClick={handleItemClick}>
+        Laser
+      </Menu.Item>
     </Menu>
   );
 };
@@ -405,6 +410,99 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
       ))
       }
       {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {2} />}
+    </div>
+  );
+};
+
+type LaserPaneProps = {
+  dataBuffer: DataBuffer;
+  api: API;
+};
+const LaserPane = ({ dataBuffer, api:API}: LaserPaneProps) => {
+  (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
+  const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
+  const [initial_rate, setDataRate] = useState(dataBuffer.dataRate);
+  const [paused, setPaused] = useState(false);
+  const colors = ["red", "green", "blue"];
+  const index = dataBuffer.viewers.indexOf("Laser");
+  const needsRPC = true;//typeof window.__TAURI__ !== "undefined";
+  const dataSlider = needsRPC ? 
+  <Slider
+        min={20}
+        max={1000}
+        onChange={(n: number) => {
+          API.data_rate(n)
+          dataBuffer.setDataRate(n)
+          setDataRate(n)
+        }}
+        initial={initial_rate}
+      />
+      : null;
+  
+  const laserMeasureIndex = dataBuffer.channelNames.indexOf("laser.measure");
+  const laserOutputIndex = dataBuffer.channelNames.indexOf("laser.output");
+  const supplyCurrentIndex = dataBuffer.channelNames.indexOf("supply.current");
+
+  return (
+    <div>
+      <Slider
+        min={1}
+        max={400}
+        onChange={(n: number) => {
+          dataBuffer.setWindowSize(n*dataBuffer.dataRate);
+          setWindowSize(n);
+        }}
+        initial={windowSize}
+      />
+      {windowSize} seconds
+      {dataSlider} 
+      {initial_rate} Hz
+      {
+        <TracePlot
+          key={laserMeasureIndex}
+          color={colors[laserMeasureIndex % colors.length]}
+          channelIndex={laserMeasureIndex}
+          dataBuffer={dataBuffer}
+          showTitle={false}
+          showAxis={false}
+          paused={paused}
+          height = {400}
+        />
+      }
+      {
+        <TracePlot
+          key={laserOutputIndex}
+          color={colors[laserOutputIndex % colors.length]}
+          channelIndex={laserOutputIndex}
+          dataBuffer={dataBuffer}
+          showTitle={false}
+          showAxis={false}
+          paused={paused}
+          height = {400}
+        />
+      }
+      {
+        <TracePlot
+          key={supplyCurrentIndex}
+          color={colors[supplyCurrentIndex % colors.length]}
+          channelIndex={supplyCurrentIndex}
+          dataBuffer={dataBuffer}
+          showTitle={false}
+          showAxis={false}
+          paused={paused}
+          height = {400}
+        />
+      }
+      {dataBuffer.viewer_rpcs[index].map((name, _i) => (
+      <form>
+        <label>
+          {name}
+          <input type="text" name="name"/>
+        </label>
+      </form>
+      ))
+      }
+      <br></br>
     </div>
   );
 };

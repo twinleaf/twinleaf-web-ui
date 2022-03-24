@@ -955,14 +955,18 @@ impl Device {
 
     pub fn status(&self) -> (Vec<String>, Vec<Vec<String>>) {
         //read status from rpc, right now hard coded to say scalar, later this will have more features than just a name (rpc calls)
-        let mut viewer_info = Vec::new();
-        let mut viewers = Vec::new();
-        // viewers.push("Scalar".to_string());
-        // viewers.push("Heater".to_string());
-        let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string()];
-        let heater_rpcs = vec!["dev.serial".to_string()];
-        // viewer_info.push(scalar_rpcs);
-        // viewer_info.push(heater_rpcs);
-        return (viewers, viewer_info);
+        if self.name() == "OMG" {
+            let mut viewer_info = Vec::new();
+            let mut viewers = Vec::new();
+            viewers.push("Scalar".to_string());
+            viewers.push("Laser".to_string());
+            let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string()];
+            let laser_rpcs = vec!["dev.serial".to_string()];
+            viewer_info.push(scalar_rpcs);
+            viewer_info.push(laser_rpcs);
+            return (viewers, viewer_info);
+        } else {
+            return (Vec::new(), Vec::new());
+        }
     }
 }
