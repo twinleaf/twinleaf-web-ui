@@ -74,6 +74,10 @@ impl DeviceJuggler {
         Device::data_rate(&self.device.as_ref().unwrap(), value)
     }
 
+    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> () {
+        Device::rpc(&self.device.as_ref().unwrap(), rpc_call, arg);
+    }
+
     /// Just clears the Options, which should result in the Device getting "dropped", which should
     /// result in the I/O threads shutting down quickly. But this has not been confirmed/tested.
     pub fn disconnect(&mut self) -> Result<String, String> {
@@ -96,9 +100,9 @@ impl DeviceJuggler {
         let device_tx = self.device.as_ref().unwrap().rx.clone();
         thread::spawn(move || DeviceJuggler::loop_packets(app, device_tx, tx_receiver));
         let rate = self.device.as_ref().unwrap().data_rate(None);
-        //self.device.as_ref().unwrap().info.initialRate = rate;
+        //self.device.as_ref().unwrap().info.initial_rate = rate;
         let mut info = self.device.as_ref().unwrap().info.clone();
-        info.initialRate = rate;
+        info.initial_rate = rate;
         return Ok(info);
     }
 
@@ -247,6 +251,16 @@ fn data_rate(
     return juggler.data_rate(value);
 }
 
+#[tauri::command]
+fn rpc(
+    state: tauri::State<Arc<Mutex<DeviceJuggler>>>,
+    rpc_call: String,
+    arg: Option<String>,
+) -> () {
+    let juggler = state.lock().unwrap();
+    juggler.rpc(rpc_call, arg);
+}
+
 fn main() {
     //let hide_menuitem = CustomMenuItem::new("hide".to_string(), "Hide Window");
     //let show_menuitem = CustomMenuItem::new("show".to_string(), "Show Window");
@@ -293,6 +307,7 @@ fn main() {
             connect_device,
             disconnect,
             data_rate,
+            rpc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

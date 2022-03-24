@@ -372,7 +372,9 @@ impl UpdatingInformation {
 pub struct DeviceInfo {
     pub name: String,
     pub channels: Vec<String>,
-    pub initialRate: f32,
+    pub initial_rate: f32,
+    pub viewers: Vec<String>,
+    pub viewer_rpcs: Vec<Vec<String>>,
     // TODO: channel data types? rate? etc
     // TODO: firmware version?
     // TODO: hw version?
@@ -399,11 +401,13 @@ impl DeviceInfo {
                 "gyro.y".into(),
                 "gyro.z".into(),
             ],
-            initialRate: 20 as f32,
+            initial_rate: 20 as f32,
+            viewers: Vec::new(),
+            viewer_rpcs: Vec::new(),
         }
     }
 
-    pub fn new_device(name:String, columns: Vec<String>) -> DeviceInfo {
+    pub fn new_device(name:String, columns: Vec<String>, viewers: Vec<String>, viewer_rpcs: Vec<Vec<String>>) -> DeviceInfo {
         let mut channels = Vec::new();
         for column_name in columns {
             channels.push(column_name.into());
@@ -411,7 +415,9 @@ impl DeviceInfo {
         DeviceInfo {
             name,
             channels: channels,
-            initialRate: 20 as f32,
+            initial_rate: 20 as f32,
+            viewers: viewers,
+            viewer_rpcs: viewer_rpcs,
         }
     }
 }
@@ -680,11 +686,12 @@ impl Device {
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initialRate: 20 as f32}};
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initial_rate: 20 as f32, viewers: Vec::new(), viewer_rpcs: Vec::new()}};
 
         let columns = device.column_names();
         let name = device.name();
-        device.info = DeviceInfo::new_device(name, columns);
+        let (viewers, viewer_rpcs) = device.status();
+        device.info = DeviceInfo::new_device(name, columns, viewers, viewer_rpcs);
         Ok(device)
     }
 
@@ -774,11 +781,12 @@ impl Device {
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initialRate: 20 as f32}};
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initial_rate: 20 as f32, viewers: Vec::new(), viewer_rpcs: Vec::new()}};
 
         let columns = device.column_names();
         let name = device.name();
-        device.info = DeviceInfo::new_device(name, columns);
+        let (viewers, viewer_rpcs) = device.status();
+        device.info = DeviceInfo::new_device(name, columns, viewers, viewer_rpcs);
         Ok(device)
     }
 
@@ -908,6 +916,11 @@ impl Device {
     
     }
 
+    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> (){
+        let mut updating_information = UpdatingInformation::default();
+        self.send_and_interpret_rpc(rpc_call, arg, &mut updating_information);
+    }
+
     pub fn data_rate(&self, value: Option<f32>) -> f32 {
         //ideally updating_information would be accessible by entire Device class
         let mut updating_information = UpdatingInformation::default();
@@ -938,5 +951,18 @@ impl Device {
             Packet:: RPCResponseData(sd) => {str::from_utf8(&sd.reply_payload).unwrap().to_string()}
             _ => {panic!("Error")}
         }
+    }
+
+    pub fn status(&self) -> (Vec<String>, Vec<Vec<String>>) {
+        //read status from rpc, right now hard coded to say scalar, later this will have more features than just a name (rpc calls)
+        let mut viewer_info = Vec::new();
+        let mut viewers = Vec::new();
+        // viewers.push("Scalar".to_string());
+        // viewers.push("Heater".to_string());
+        let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string()];
+        let heater_rpcs = vec!["dev.serial".to_string()];
+        // viewer_info.push(scalar_rpcs);
+        // viewer_info.push(heater_rpcs);
+        return (viewers, viewer_info);
     }
 }

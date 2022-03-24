@@ -88,7 +88,7 @@ export const useDevices = (
     setDevices((devices) => ({ ...devices, [deviceId]: info }));
 
     dataBuffer.current = new DataBuffer(info, 1000);
-    dataBuffer.current.setDataRate(info.initialRate);
+    dataBuffer.current.setDataRate(info.initial_rate);
 
     const onPacket = (packet: DevicePacket) => {
       if (packet.packet_type === "data") {

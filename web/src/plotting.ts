@@ -11,20 +11,22 @@ import { DataDevicePacket, DeviceInfo } from "./api";
  * - calculates power spectra for individual channels
  *
  * The mostly change required here: if data packets include timestamps,
- * those should be recorded here, replacing the .positions array and
+ * those should be recorded here, replacing the .timestamps array and
  * making the observedHz calculation obsolete.
  */
 export class DataBuffer {
   size: number;
   data: number[][];
   sampleNums: number[] = [];
-  positions: number[] = [];
+  timestamps: number[] = [];
   deviceName: string;
   channelNames: string[];
   sampleReceivedTimes: number[] = [];
   alreadySeen: WeakSet<any> = new WeakSet();
   scheduledPlotUpdate: number;
   dataRate: number;
+  viewers: string[];
+  viewer_rpcs: string[][];
 
   constructor(info: DeviceInfo, size = 1000) {
     this.deviceName = info.name;
@@ -35,7 +37,9 @@ export class DataBuffer {
     });
     this.dataRate = 20;
     this.size = size;
-    this.positions = [];
+    this.timestamps = [];
+    this.viewers = info.viewers;
+    this.viewer_rpcs = info.viewer_rpcs;
   }
   // For interactively setting the window size.
   // Not necessary if we decide on a correct window size
@@ -47,8 +51,8 @@ export class DataBuffer {
     }
     this.sampleReceivedTimes = this.sampleReceivedTimes.slice(-size);
     this.sampleNums = this.sampleNums.slice(-size);
-    this.positions = this.positions.slice(-size);
-    // this.positions = [...Array(this.sampleNums.length).keys()].map(
+    this.timestamps = this.timestamps.slice(-size);
+    // this.timestamps = [...Array(this.sampleNums.length).keys()].map(
     //   (x) => x - this.sampleNums.length
     // );
     this.alreadySeen = new WeakSet();
@@ -74,15 +78,15 @@ export class DataBuffer {
     }
     this.sampleReceivedTimes.push(performance.now());
     this.sampleNums.push(frame.sample_number);
-    this.positions.push(frame.timestamp);
-    if (this.positions.length > this.size) this.positions.shift();
+    this.timestamps.push(frame.timestamp);
+    if (this.timestamps.length > this.size) this.timestamps.shift();
 
     if (this.sampleNums.length > this.size) {
       this.sampleNums.shift();
       this.sampleReceivedTimes.shift();
     }
-    while (this.positions.length < this.sampleNums.length) {
-      this.positions.unshift((this.positions[0] || 0) - 1);
+    while (this.timestamps.length < this.sampleNums.length) {
+      this.timestamps.unshift((this.timestamps[0] || 0) - 1);
     }
   };
 
@@ -111,7 +115,7 @@ export class DataBuffer {
    * and the time delta since the last data update.
    */
   getXs = (timeShift = true): number[] => {
-    if (!timeShift) return this.positions;
+    if (!timeShift) return this.timestamps;
     const now = performance.now();
     const observedHz = this.observedHz();
     const lastDataUpdate = this.sampleReceivedTimes[this.sampleReceivedTimes.length - 1];
@@ -125,9 +129,9 @@ export class DataBuffer {
       // do an interpolated update (aka animation)
       const delta = (now - lastDataUpdate) / 1000;
       const expectedDataPoints = observedHz * delta;
-      return this.positions.map((x) => x - expectedDataPoints);
+      return this.timestamps.map((x) => x - expectedDataPoints);
     }
-    return this.positions;
+    return this.timestamps;
   };
 
   /*

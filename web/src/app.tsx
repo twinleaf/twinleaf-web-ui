@@ -17,7 +17,7 @@ import { DataBuffer } from "./plotting";
 import { APIType, DeviceId, DeviceInfo, API } from "./api";
 import { CombinedSpectrumPlot, TracePlot } from "./plot_components";
 
-type ContentPane = "configure" | "plot" | "about";
+type ContentPane = "configure" | "plot" | "about" | "Scalar" | "Vector" | "Heater" | "Laser";
 
 export const App = () => {
   const { api, changeAPIType } = useDeviceAPI();
@@ -30,7 +30,6 @@ export const App = () => {
     api,
     addLogMessage
   );
-
   const connectAndViewPlot = async (id: string) => {
     await connect(id);
     setActivePane("plot");
@@ -45,7 +44,7 @@ export const App = () => {
             <Button onClick={() => setActivePane("configure")}>Connect a device first</Button>
           </Header>
         ) : activePane === "plot" && dataBuffer ? (
-          <PlotPane dataBuffer={dataBuffer} api ={api} />
+          <PlotPane dataBuffer={dataBuffer} api ={api} numNoise = {3} numPlots = {dataBuffer.channelNames.length -1} />
         ) : activePane === "configure" ? (
           <ConfigurePane
             apiType={api.type}
@@ -63,6 +62,12 @@ export const App = () => {
               Twinleaf website
             </a>
           </h4>
+        ) : activePane === "Scalar" && dataBuffer && dataBuffer.viewers.includes("Scalar") ? (
+          <ScalarPane dataBuffer={dataBuffer} api ={api} />
+        ) : activePane === "Vector" && dataBuffer && dataBuffer.viewers.includes("Vector") ? (
+          <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {3}/>
+        ) : activePane === "Heater" && dataBuffer && dataBuffer.viewers.includes("Heater") ? (
+          <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {2}/>
         ) : null}
       </Container>
     </>
@@ -235,19 +240,44 @@ const TopBar = ({
       <Menu.Item>
         <span ref={setFPSRef} />
       </Menu.Item>
+      <Menu.Item name="Scalar" active={activePane === "Scalar"} onClick={handleItemClick}>
+        Scalar
+      </Menu.Item>
+      <Menu.Item name="Vector" active={activePane === "Vector"} onClick={handleItemClick}>
+        Vector
+      </Menu.Item>
+      <Menu.Item name="Heater" active={activePane === "Heater"} onClick={handleItemClick}>
+        Heater
+      </Menu.Item>
     </Menu>
+  );
+};
+
+type SliderProps = {
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+  initial: number;
+};
+const Slider = ({ min, max, onChange, initial }: SliderProps) => {
+  const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(e.target.valueAsNumber);
+  };
+  return (
+    <input value={initial} onChange={_onChange} type="range" name="window" min={min} max={max} />
   );
 };
 
 type PlotPaneProps = {
   dataBuffer: DataBuffer;
   api: API;
+  numPlots: number;
+  numNoise: number;
 };
-const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
+const PlotPane = ({ dataBuffer, api:API, numPlots, numNoise}: PlotPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
-  //const startingRate = API.data_rate(null);
-  const [initialRate, setDataRate] = useState(dataBuffer.dataRate);
+  const [initial_rate, setDataRate] = useState(dataBuffer.dataRate);
   const [paused, setPaused] = useState(false);
 
   const colors = ["red", "green", "blue"];
@@ -262,10 +292,9 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
           dataBuffer.setDataRate(n)
           setDataRate(n)
         }}
-        initial={initialRate}
+        initial={initial_rate}
       />
       : null;
-
 
   return (
     <div>
@@ -286,34 +315,109 @@ const PlotPane = ({ dataBuffer, api:API }: PlotPaneProps) => {
       />
       {windowSize} seconds 
       {dataSlider} 
-      {initialRate} Hz
-      {dataBuffer.channelNames.map((_name, i) => (
+      {initial_rate} Hz
+      {dataBuffer.channelNames.slice(0,numPlots).map((_name, i) => (
         <TracePlot
           key={i}
           color={colors[i % colors.length]}
           channelIndex={i}
           dataBuffer={dataBuffer}
           showTitle={i === 0}
-          showAxis={i == dataBuffer.channelNames.length-1}
+          showAxis={i == numPlots-1}
           paused={paused}
+          height = {300}
         />
       ))}
-      {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} />}
+      {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {numNoise} />}
     </div>
   );
 };
 
-type SliderProps = {
-  min: number;
-  max: number;
-  onChange: (n: number) => void;
-  initial: number;
+type ScalarPaneProps = {
+  dataBuffer: DataBuffer;
+  api: API;
 };
-const Slider = ({ min, max, onChange, initial }: SliderProps) => {
-  const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(e.target.valueAsNumber);
-  };
+const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
+  (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
+  const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
+  const [initial_rate, setDataRate] = useState(dataBuffer.dataRate);
+  const [paused, setPaused] = useState(false);
+
+  const colors = ["red", "green", "blue"];
+  const index = dataBuffer.viewers.indexOf("Scalar");
+
+  const needsRPC = true;//typeof window.__TAURI__ !== "undefined";
+  const dataSlider = needsRPC ? 
+  <Slider
+        min={20}
+        max={1000}
+        onChange={(n: number) => {
+          API.data_rate(n)
+          dataBuffer.setDataRate(n)
+          setDataRate(n)
+        }}
+        initial={initial_rate}
+      />
+      : null;
+
   return (
-    <input value={initial} onChange={_onChange} type="range" name="window" min={min} max={max} />
+    <div>
+      <Button onClick={() => setPaused(false)} disabled={!paused}>
+        Start plotting
+      </Button>
+      <Button onClick={() => setPaused(true)} disabled={paused}>
+        Pause plotting
+      </Button>
+      <Slider
+        min={1}
+        max={400}
+        onChange={(n: number) => {
+          dataBuffer.setWindowSize(n*dataBuffer.dataRate);
+          setWindowSize(n);
+        }}
+        initial={windowSize}
+      />
+      {windowSize} seconds 
+      {dataSlider} 
+      {initial_rate} Hz
+      {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
+        <TracePlot
+          key={i}
+          color={colors[i % colors.length]}
+          channelIndex={i}
+          dataBuffer={dataBuffer}
+          showTitle={i === 0}
+          showAxis={i == 2}
+          paused={paused}
+          height = {400}
+        />
+      ))}
+      {dataBuffer.viewer_rpcs[index].map((name, _i) => (
+      //   <Button onClick={() => API.rpc(name, null)} disabled={paused}>
+      //   {name}
+      // </Button>
+      <form>
+        <label>
+          {name}
+          <input type="text" name="name"/>
+        </label>
+      </form>
+      ))
+      }
+      {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {2} />}
+    </div>
   );
 };
+
+// type StatusProps = {
+//   api: API,
+//   dataBuffer: DataBuffer,
+//   numPlots: number,
+//   numNoise: number,
+//   status: string[],
+// }
+// const StatusProps = ({ dataBuffer, api:API, numPlots, numNoise, status}: StatusProps) => {
+//   if (status.includes("Scalar")) {
+
+//   }
+// })

@@ -128,6 +128,7 @@ export type TracePlotProps = {
   showTitle: boolean;
   showAxis: boolean;
   paused?: boolean;
+  height: number;
 };
 export const TracePlot = ({
   dataBuffer,
@@ -136,6 +137,7 @@ export const TracePlot = ({
   showTitle,
   showAxis,
   paused,
+  height,
 }: TracePlotProps) => (
   <Plot
     dataBuffer={dataBuffer}
@@ -143,16 +145,17 @@ export const TracePlot = ({
     paused={paused}
     options={{
       title: showTitle ? dataBuffer.deviceName : undefined,
-      height: 160,
+      height: height,
       pxAlign: 0,
       scales: {
         x: { time: false },
         y: { auto: true },
       },
-      legend: { show: false },
+      legend: { show: true },
       series: [
-        {},
+        {label: "Time (s)"},
         {
+          label: dataBuffer.channelNames[channelIndex],
           stroke: color,
           spanGaps: true,
           pxAlign: 0,
@@ -186,8 +189,9 @@ export const TracePlot = ({
 export type CombinedSpectrumPlotProps = {
   dataBuffer: DataBuffer;
   paused?: boolean;
+  num_field: number;
 };
-export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlotProps) => {
+export const CombinedSpectrumPlot = ({ dataBuffer, paused, num_field }: CombinedSpectrumPlotProps) => {
   const colors = ["red", "green", "blue"];
   return (
     <Plot
@@ -221,7 +225,7 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused }: CombinedSpectrumPlo
           {
             value: (_self, rawValue) => rawValue.toFixed(2) + "Hz",
           },
-          ...dataBuffer.channelNames.map((name, i) => ({
+          ...dataBuffer.channelNames.slice(0, num_field).map((name, i) => ({
             stroke: colors[i % colors.length],
             label: name,
             spanGaps: true,

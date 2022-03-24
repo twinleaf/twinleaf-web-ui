@@ -29,7 +29,9 @@ export type DeviceDesc = {
 export type DeviceInfo = {
   channels: string[];
   name: string;
-  initialRate: number;
+  initial_rate: number;
+  viewers: string[];
+  viewer_rpcs: string[][];
 };
 
 export type APIType = "Tauri" | "Demo";
@@ -41,7 +43,8 @@ export interface API {
   enumerateDevices: () => Promise<DeviceDesc[]>;
   connectDevice: (uri: string) => Promise<DeviceInfo>;
   disconnect: () => Promise<void>;
-  data_rate: (value: number) => Promise<number>
+  data_rate: (value: number) => Promise<number>;
+  rpc: (rpc_call: string, arg: string | null) => Promise<void>;
 }
 
 export const TauriAPI: API = {
@@ -72,6 +75,9 @@ export const TauriAPI: API = {
   data_rate: async (value: number | null) => {
     const rate: number = await invoke("data_rate", {value: value});
     return rate;
+  },
+  rpc: async (rpc_call: string, arg: string | null) => {
+    await invoke("rpc", {rpc_call: rpc_call, arg: arg});
   },
 };
 
@@ -200,7 +206,9 @@ export const DemoAPI: API = {
     return Promise.resolve({
       name: "demo '" + uri + "'",
       channels,
-      initialRate: 20,
+      initial_rate: 20,
+      viewers: [],
+      viewer_rpcs: [],
     });
   },
   disconnect: () => {
@@ -209,6 +217,7 @@ export const DemoAPI: API = {
     return Promise.resolve();
   },
   data_rate: async (value: number) => {return value;},
+  rpc: async (rpc_call: string, arg: string | null) => {},
 };
 
 /////////////////////////////////////////////////////////////////
