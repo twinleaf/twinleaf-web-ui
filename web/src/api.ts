@@ -44,7 +44,7 @@ export interface API {
   connectDevice: (uri: string) => Promise<DeviceInfo>;
   disconnect: () => Promise<void>;
   data_rate: (value: number) => Promise<number>;
-  rpc: (rpc_call: string, arg: string | null) => Promise<void>;
+  rpc: (rpc_call: string, arg: string | null) => Promise<string>;
 }
 
 export const TauriAPI: API = {
@@ -66,7 +66,7 @@ export const TauriAPI: API = {
   connectDevice: async (uri: string) => {
     const loc = { uri };
     const resp: DeviceInfo = await invoke("connect_device", loc);
-    console.log(resp);
+    //console.log(resp);
     return resp;
   },
   disconnect: async () => {
@@ -77,7 +77,9 @@ export const TauriAPI: API = {
     return rate;
   },
   rpc: async (rpc_call: string, arg: string | null) => {
-    await invoke("rpc", {rpc_call: rpc_call, arg: arg});
+    const reply: string = await invoke("rpc", {rpcCall: rpc_call, arg: arg});
+    console.log(reply);
+    return reply;
   },
 };
 
@@ -217,7 +219,7 @@ export const DemoAPI: API = {
     return Promise.resolve();
   },
   data_rate: async (value: number) => {return value;},
-  rpc: async (rpc_call: string, arg: string | null) => {},
+  rpc: async (rpc_call: string, arg: string | null) => {console.log(arg); return rpc_call;},
 };
 
 /////////////////////////////////////////////////////////////////

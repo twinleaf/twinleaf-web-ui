@@ -45,8 +45,9 @@ export const Plot = (props: PlotProps) => {
 
   const updatingPlot = useRef<UpdatingUPlot>();
   const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
-
+  const aspectRatio = 0.4;
   const width = useWidth(el);
+  console.log(width);
   const widthRef = useRef(width);
   widthRef.current = width;
 
@@ -60,7 +61,7 @@ export const Plot = (props: PlotProps) => {
     const updatePlotWithWidth = (u: uPlot, db: DataBuffer, el: HTMLElement): void => {
       updatePlot(u, db, el);
       if (widthRef.current != u.width) {
-        u.setSize({ width: widthRef.current, height: u.height });
+        u.setSize({ width: widthRef.current, height: widthRef.current*aspectRatio});
       }
     };
     updatingPlot.current = new UpdatingUPlot(

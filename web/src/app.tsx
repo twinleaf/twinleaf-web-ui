@@ -351,20 +351,6 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
   const colors = ["red", "green", "blue"];
   const index = dataBuffer.viewers.indexOf("Scalar");
 
-  const needsRPC = true;//typeof window.__TAURI__ !== "undefined";
-  const dataSlider = needsRPC ? 
-  <Slider
-        min={20}
-        max={1000}
-        onChange={(n: number) => {
-          API.data_rate(n)
-          dataBuffer.setDataRate(n)
-          setDataRate(n)
-        }}
-        initial={initial_rate}
-      />
-      : null;
-
   return (
     <div>
       <Button onClick={() => setPaused(false)} disabled={!paused}>
@@ -382,9 +368,12 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
         }}
         initial={windowSize}
       />
-      {windowSize} seconds 
-      {dataSlider} 
-      {initial_rate} Hz
+      {windowSize} seconds <br></br>
+      {dataBuffer.viewer_rpcs[index].map((name, _i) => (
+        <Reading name = {name} api = {API}/>
+      ))
+      }
+
       {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
         <TracePlot
           key={i}
@@ -397,22 +386,35 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
           height = {400}
         />
       ))}
-      {dataBuffer.viewer_rpcs[index].map((name, _i) => (
-      //   <Button onClick={() => API.rpc(name, null)} disabled={paused}>
-      //   {name}
-      // </Button>
-      <form>
-        <label>
-          {name}
-          <input type="text" name="name"/>
-        </label>
-      </form>
-      ))
-      }
       {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {2} />}
     </div>
   );
 };
+const Reading = ({name, api}: {name: string, api: API}) => {
+  const getInitial = async() => {
+    const initial = await api.rpc(name, null);
+    console.log(initial);
+    return initial;
+  }
+  const [value, setValue] = useState(getInitial);
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("running handle change");
+    setValue(e.target.value);
+  };
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    await api.rpc(name,value);
+  }
+return(
+<form id = {name} onSubmit = {handleSubmit}>
+<br></br>
+       <label>
+          {name}
+          <input type="text" name="name" value = {value} onChange = {handleChange}/>
+        </label>
+</form>
+)
+}
 
 type LaserPaneProps = {
   dataBuffer: DataBuffer;
@@ -422,7 +424,7 @@ const LaserPane = ({ dataBuffer, api:API}: LaserPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
   const [initial_rate, setDataRate] = useState(dataBuffer.dataRate);
-  const [paused, setPaused] = useState(false);
+  const [paused, _setPaused] = useState(false);
   const colors = ["red", "green", "blue"];
   const index = dataBuffer.viewers.indexOf("Laser");
   const needsRPC = true;//typeof window.__TAURI__ !== "undefined";

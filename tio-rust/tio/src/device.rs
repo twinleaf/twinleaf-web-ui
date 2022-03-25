@@ -916,9 +916,42 @@ impl Device {
     
     }
 
-    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> (){
+    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> String{
         let mut updating_information = UpdatingInformation::default();
-        self.send_and_interpret_rpc(rpc_call, arg, &mut updating_information);
+        let (rpc_type, response) = match arg {
+            Some(v) => {self.send_and_interpret_rpc(rpc_call, Some(v.to_string()) , &mut updating_information)}
+            None => {self.send_and_interpret_rpc(rpc_call, None , &mut updating_information)}
+        };
+        let reply;
+        match response {
+            Packet:: RPCResponseData(sd) => {reply = Replies::Response(sd.reply_payload);}
+            _ => {panic!("Error")}
+        }
+        let mut parsed_response = "".to_string();
+        match rpc_type {
+            Some(resp_type) => { 
+                if let Replies::Response(payload) = reply{
+                    use TYPES::*;
+                    match resp_type {
+                        U8 => {parsed_response = str::from_utf8(&payload).unwrap().to_string();}
+                        I8 => {parsed_response = str::from_utf8(&payload).unwrap().to_string()}
+                        U16 => {parsed_response = u16::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        I16 => {parsed_response = i16::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        U32 => {parsed_response = u32::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        I32 => {parsed_response = i32::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        U64 => {parsed_response = u64::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        I64 => {parsed_response = i64::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        F32 => {parsed_response = f32::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        F64 => {parsed_response = f64::from_le_bytes(payload.try_into().unwrap()).to_string();}
+                        StringType => {parsed_response = str::from_utf8(&payload).unwrap().to_string();}
+                        NoneType => {parsed_response = str::from_utf8(&payload).unwrap().to_string();}
+                        _ =>  {parsed_response = str::from_utf8(&payload).unwrap().to_string();}
+                    }
+                }
+            }
+            None => {}
+        }
+        parsed_response
     }
 
     pub fn data_rate(&self, value: Option<f32>) -> f32 {
@@ -955,11 +988,13 @@ impl Device {
 
     pub fn status(&self) -> (Vec<String>, Vec<Vec<String>>) {
         //read status from rpc, right now hard coded to say scalar, later this will have more features than just a name (rpc calls)
-        if self.name() == "OMG" {
+        if self.name() == "VMR" || self.name() == "vmr" {
             let mut viewer_info = Vec::new();
             let mut viewers = Vec::new();
             viewers.push("Scalar".to_string());
             viewers.push("Laser".to_string());
+            viewers.push("Vector".to_string());
+            viewers.push("Heater".to_string());
             let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string()];
             let laser_rpcs = vec!["dev.serial".to_string()];
             viewer_info.push(scalar_rpcs);

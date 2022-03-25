@@ -74,8 +74,10 @@ impl DeviceJuggler {
         Device::data_rate(&self.device.as_ref().unwrap(), value)
     }
 
-    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> () {
-        Device::rpc(&self.device.as_ref().unwrap(), rpc_call, arg);
+    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> String {
+        println!("rpc being called");
+        let reply = Device::rpc(&self.device.as_ref().unwrap(), rpc_call, arg);
+        return reply;
     }
 
     /// Just clears the Options, which should result in the Device getting "dropped", which should
@@ -256,9 +258,9 @@ fn rpc(
     state: tauri::State<Arc<Mutex<DeviceJuggler>>>,
     rpc_call: String,
     arg: Option<String>,
-) -> () {
+) -> String {
     let juggler = state.lock().unwrap();
-    juggler.rpc(rpc_call, arg);
+    return juggler.rpc(rpc_call, arg);
 }
 
 fn main() {
