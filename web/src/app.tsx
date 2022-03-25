@@ -273,6 +273,8 @@ const Slider = ({ min, max, onChange, initial }: SliderProps) => {
   );
 };
 
+
+
 type PlotPaneProps = {
   dataBuffer: DataBuffer;
   api: API;
@@ -369,11 +371,12 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
         initial={windowSize}
       />
       {windowSize} seconds <br></br>
+      <div style={{display: 'flex'}}>
       {dataBuffer.viewer_rpcs[index].map((name, _i) => (
         <Reading name = {name} api = {API}/>
       ))
       }
-
+      </div>
       {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
         <TracePlot
           key={i}
@@ -383,7 +386,7 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
           showTitle={i === 0}
           showAxis={i == 2}
           paused={paused}
-          height = {400}
+          height = {300}
         />
       ))}
       {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {2} />}
@@ -396,7 +399,7 @@ const Reading = ({name, api}: {name: string, api: API}) => {
     console.log(initial);
     return initial;
   }
-  const [value, setValue] = useState(getInitial);
+  const [value, setValue] = useState("");
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log("running handle change");
     setValue(e.target.value);
@@ -406,11 +409,13 @@ const Reading = ({name, api}: {name: string, api: API}) => {
     await api.rpc(name,value);
   }
 return(
-<form id = {name} onSubmit = {handleSubmit}>
-<br></br>
+<form id = {name} onSubmit = {handleSubmit} >
+<p></p>
        <label>
           {name}
-          <input type="text" name="name" value = {value} onChange = {handleChange}/>
+          &nbsp;
+          <input type="text" name="name" value = {value} onChange = {handleChange} size = {5}/>
+          &nbsp;&nbsp;&nbsp;
         </label>
 </form>
 )

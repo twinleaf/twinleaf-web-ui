@@ -45,7 +45,7 @@ export const Plot = (props: PlotProps) => {
 
   const updatingPlot = useRef<UpdatingUPlot>();
   const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
-  const aspectRatio = 0.4;
+  const aspectRatio = 0.3;
   const width = useWidth(el);
   console.log(width);
   const widthRef = useRef(width);
