@@ -1,4 +1,4 @@
-import React, { useState, MouseEvent } from "react";
+import React, { useState, MouseEvent, useEffect } from "react";
 import {
   Button,
   Container,
@@ -347,7 +347,7 @@ type ScalarPaneProps = {
 const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
-  const [initial_rate, setDataRate] = useState(dataBuffer.dataRate);
+  const [_initial_rate, _setDataRate] = useState(dataBuffer.dataRate);
   const [paused, setPaused] = useState(false);
 
   const colors = ["red", "green", "blue"];
@@ -370,10 +370,11 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
         }}
         initial={windowSize}
       />
+      {/* <SizeReading dataBuffer = {dataBuffer} /> */}
       {windowSize} seconds <br></br>
       <div style={{display: 'flex'}}>
-      {dataBuffer.viewer_rpcs[index].map((name, _i) => (
-        <Reading name = {name} api = {API}/>
+      {dataBuffer.viewer_rpcs[index].map((name, i) => (
+        <Reading name = {name} api = {API} dataBuffer = {dataBuffer} vindex = {index} rpcindex = {i}/>
       ))
       }
       </div>
@@ -393,32 +394,93 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
     </div>
   );
 };
-const Reading = ({name, api}: {name: string, api: API}) => {
-  const getInitial = async() => {
-    const initial = await api.rpc(name, null);
-    console.log(initial);
-    return initial;
-  }
-  const [value, setValue] = useState("");
+
+const SizeReading = ({dataBuffer}: {dataBuffer: DataBuffer}) => {
+  const [size, setSize] = useState(dataBuffer.size/dataBuffer.dataRate);
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log("running handle change");
+    //console.log("running handle change");
+    setSize(e.target.size);
+  }
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    dataBuffer.setWindowSize(size*dataBuffer.dataRate);
+    setSize(size);
+    e.preventDefault();
+  }
+  return(
+    <form id = "windowSize" onSubmit = {handleSubmit} >
+    <p></p>
+          <label>
+              Window Size:
+              &nbsp;
+              <input type="text" name="windowSize" value = {size} onChange = {handleChange} size = {5}/>
+              &nbsp;&nbsp;&nbsp;
+            </label>
+    </form>
+    )
+
+  
+}
+
+const Reading = ({name, api, dataBuffer, vindex, rpcindex}: {name: string, api: API, dataBuffer: DataBuffer, vindex: number, rpcindex: number}) => {
+  const [enabled, setEnabled] = useState(true);
+  useEffect(() => {
+    if (dataBuffer.viewer_rpcs_isbool[vindex][rpcindex] == true) {
+      api.rpc(name,null).then((initialValue) => {
+        // not sure if this is the best check here - I imagine this will change when the metadata changes
+        if (initialValue == "\u{1}") {
+          setEnabled(true);
+        } else {
+          setEnabled(false);
+        }
+      });
+    }
+  }, [])
+  const handleChecking = () => {
+    setEnabled(!enabled);
+    if (!enabled == false) {
+      console.log("here");
+      api.rpc(name, "0");
+    } else {
+      api.rpc(name, "1");
+    }
+  }
+  const [value, setValue] = useState("loading");
+  useEffect(() => {
+    api.rpc(name,null).then((initialValue) => setValue(initialValue));
+  }, [])
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    //console.log("running handle change");
     setValue(e.target.value);
   };
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     await api.rpc(name,value);
   }
-return(
-<form id = {name} onSubmit = {handleSubmit} >
-<p></p>
-       <label>
-          {name}
-          &nbsp;
-          <input type="text" name="name" value = {value} onChange = {handleChange} size = {5}/>
-          &nbsp;&nbsp;&nbsp;
-        </label>
-</form>
-)
+if (dataBuffer.viewer_rpcs_isbool[vindex][rpcindex] == false){ 
+  return(
+  <form id = {name} onSubmit = {handleSubmit} >
+  <p></p>
+        <label>
+            {name}
+            &nbsp;
+            <input type="text" name="name" value = {value} onChange = {handleChange} size = {5}/>
+            &nbsp;&nbsp;&nbsp;
+          </label>
+  </form>
+  )
+}
+else {
+  return(
+    <form id = {name} onSubmit = {handleSubmit} >
+    <p></p>
+          <label>
+              <input type="checkbox" id="name" name = "name" checked = {enabled} onChange = {handleChecking} size = {5}/>
+              {name}
+              &nbsp;&nbsp;&nbsp;
+            </label>
+    </form>
+  )
+}
 }
 
 type LaserPaneProps = {

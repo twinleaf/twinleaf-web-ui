@@ -47,7 +47,7 @@ export const Plot = (props: PlotProps) => {
   const [el, setPlotEl] = useState<HTMLDivElement | null>(null);
   const aspectRatio = 0.3;
   const width = useWidth(el);
-  console.log(width);
+  //console.log(width);
   const widthRef = useRef(width);
   widthRef.current = width;
 
@@ -200,7 +200,7 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused, num_field }: Combined
       updateMethod={{ method: "interval", interval: 200 }}
       paused={paused}
       options={{
-        height: 160,
+        height: 300,
         pxAlign: 0,
         axes: [
           {

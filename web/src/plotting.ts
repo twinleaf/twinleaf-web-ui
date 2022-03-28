@@ -27,6 +27,7 @@ export class DataBuffer {
   dataRate: number;
   viewers: string[];
   viewer_rpcs: string[][];
+  viewer_rpcs_isbool: boolean[][];
 
   constructor(info: DeviceInfo, size = 1000) {
     this.deviceName = info.name;
@@ -40,6 +41,7 @@ export class DataBuffer {
     this.timestamps = [];
     this.viewers = info.viewers;
     this.viewer_rpcs = info.viewer_rpcs;
+    this.viewer_rpcs_isbool = info.viewer_rpcs_isbool;
   }
   // For interactively setting the window size.
   // Not necessary if we decide on a correct window size
@@ -141,7 +143,7 @@ export class DataBuffer {
   spectrum = (channel: number, n = 4096): { amplitudes: number[]; freqs: number[] } => {
     const d = this.data[channel];
     const size = 2 ** Math.floor(Math.log2(Math.min(d.length, n)));
-    const hz = this.observedHz();
+    const hz = this.dataRate;
     if (size < 1 || !hz) return { amplitudes: [], freqs: [] };
     const fft = new FFT(size);
 
@@ -156,15 +158,14 @@ export class DataBuffer {
 
     const freqs = [];
     const amplitudes = [];
-    for (let i = 0; i < size / 2; i++) {
+    for (let i = 1; i < size / 2; i++) {
       const re = out[2 * i];
       const im = out[2 * i + 1];
-      amplitudes.push(Math.sqrt(re * re + im * im));
+      amplitudes.push(Math.log2(Math.sqrt(re * re + im * im)));
       freqs.push((i * hz) / size);
     }
     // very naive way to make DC go away
     amplitudes[0] = 0;
-
     return { freqs, amplitudes };
   };
 }

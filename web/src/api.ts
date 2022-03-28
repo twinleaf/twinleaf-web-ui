@@ -32,6 +32,7 @@ export type DeviceInfo = {
   initial_rate: number;
   viewers: string[];
   viewer_rpcs: string[][];
+  viewer_rpcs_isbool: boolean[][];
 };
 
 export type APIType = "Tauri" | "Demo";
@@ -60,7 +61,7 @@ export const TauriAPI: API = {
   },
   enumerateDevices: async () => {
     const resp: DeviceDesc[] = await invoke("enumerate_devices");
-    console.log(resp);
+    //console.log(resp);
     return resp;
   },
   connectDevice: async (uri: string) => {
@@ -211,6 +212,7 @@ export const DemoAPI: API = {
       initial_rate: 20,
       viewers: [],
       viewer_rpcs: [],
+      viewer_rpcs_isbool: [],
     });
   },
   disconnect: () => {

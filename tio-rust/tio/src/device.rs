@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::str;
 
+//enum to hold types, this allows me to return values of different types - helpful because different packets/fields come in with different data types
 #[derive(Debug, Clone, Serialize)]
 pub enum Value {
     U8(u8),
@@ -32,12 +33,8 @@ pub enum Value {
     NoneType(),
 }
 
-// fn format_rpc_request(name: String, routing_bytes: Vec<u8>) -> Vec<u8> {
-//      let rpc = RPCRequest::named_simple(name);
-//      let msg = rpc.to_bytes();
-//      RawPacket{packet_type: PacketType::RPCRequest, routing_len: routing_bytes.len() as u8, payload_len: msg.len() as u16, payload: msg, routing: routing_bytes}.into_bytes()
-// }
-
+// this is just a function to convert a backed to a raw packet.  this is used to write in the tcp function.  
+// this is sort of a temporary fix that doesn't handle the different routing bytes for different sensors
 fn packet_to_raw(packet: Packet, routing_bytes: Vec<u8>) -> RawPacket {
     let msg;
     match packet {
@@ -48,6 +45,9 @@ fn packet_to_raw(packet: Packet, routing_bytes: Vec<u8>) -> RawPacket {
     RawPacket{packet_type: PacketType::RPCRequest, routing_len: routing_bytes.len() as u8, payload_len: msg.len() as u16, payload: msg, routing: routing_bytes}
 }
 
+//holds the different replies that can come from an rpc response
+//error handling doesn't exist too much on the app side, but these might be used in a tio-rpc equivalent or eventually passed to the app somehow
+//a future thing to think about might be how we want the error to show up in the app.  Maybe a pop up message?
 #[derive(Debug)]
 pub enum Replies {
     Response(Vec<u8>),
@@ -128,6 +128,21 @@ impl ErrorCode {
     }
 }
 
+
+//here starts the complicated structure I have to handle metadata.  I am almost positive there is a better way to do this part or at least a better naming system
+//I have mostly just followed tio-python to my best ability
+
+// the order of events sort of follows this sequence:
+    // First, we send an rpc command to send the metadata
+    // While this is happening, packets are coming in.  
+    // If the metadata has not come yet and we get a new StreamData packet (the packet type with the data points), we just ignore and send an empty packet
+    // Everytime we get a new source data or timebase packet, we save it in a dict to SensorData.  the keys are the ids of the packet and the values are the source/timebase packets
+    // Once we receive a streamDescription packet (the main metadata packet), we "compile" this packet using our saved timebase/source dicts.  
+    // This compiling basically just grabs the useful information (see streamCompilation, there is one of these for each source packet on the stream description).  
+    // This useful information right now is just column_name, timebase, and data type for each source in the stream description
+    // We save a vector of stream compilations that basically holds the "setup" for all incoming datapoints until a new stream description comes in and it recompiles
+
+
 #[derive(Debug,PartialEq, Clone)]
 pub struct StreamCompilation {
     pub column_name: String,
@@ -152,6 +167,7 @@ impl Default for SensorData {
 impl SensorData{
 
     pub fn compile(&mut self) -> () {
+        //function to compile the metadata into a setup structure.  this setup gets stored as a vec of streamCompilation.
         let mut stream_compilations = Vec::new();
         let mut source;
         let timebase;
@@ -193,6 +209,8 @@ impl SensorData{
     }
 }
 
+
+// data point is the actual struct that we will use to pass our parsed data and timestamp
 #[derive(Debug, Serialize, Clone)]
 pub struct DataPoint {
     pub timestamp: f32,
@@ -200,6 +218,10 @@ pub struct DataPoint {
     pub data: Vec<f64>,
 }
 
+// updating information holds things that update over time.  
+// Basically just puts everything in one place so we don't have to pass a bunch of things into the functions that are reading from the sensor
+// I am not sure it makes sense to put the rpc hash here.  Right now I have it here, but they are not used together.  That is, the rpc calls just make a new 
+// version of UpdatingInformation and don't use the same one that the data_point one is.  This could likely be combined or changed in the future.
 #[derive(Debug, Clone)]
 pub struct UpdatingInformation{
     pub rpc_hash: HashMap<u16, Packet>,
@@ -212,6 +234,7 @@ impl Default for UpdatingInformation{
     }
 }
 impl UpdatingInformation {
+    // this is the function that will get called everytime a new packet comes in
     pub fn interpret_packet(&mut self, packet: Packet) -> (){
         use Packet::*;
         match packet.clone() {
@@ -226,6 +249,7 @@ impl UpdatingInformation {
             _ => {}
         }
     }
+    //this gets called when a StreamData packet comes in.  It uses our compiled metadata to format the data correctly and parses according the correct type
     pub fn interpret_datapoint(&mut self, streamdata: StreamData) -> () {
         let mut datum = DataPoint{timestamp: 0.0, column_names: Vec::new(), data: Vec::new()};
         let mut i = 0;
@@ -347,13 +371,7 @@ impl UpdatingInformation {
             };
             //println!("{:?}: {:?}", compilation, datum.get(compilation).unwrap());
         }
-        // if (datum.column_names.len() < self.sensor_data.stream_description.stream_total_components as usize) && !self.data_point.column_names.is_empty() {
-        //     println!("Here");
-        //     for i in (self.sensor_data.stream_description.stream_total_components as usize - datum.column_names.len())..self.sensor_data.stream_description.stream_total_components as usize{
-        //         datum.column_names.push(self.data_point.column_names[i].clone());
-        //         datum.data.push(self.data_point.data[i].clone());
-        //     }
-        // }
+        //this is for the dummy
         if datum.data.is_empty(){
             datum.timestamp = streamdata.sample_num as f32;
             datum.data = streamdata.as_f32().into_iter().map(|v| v as f64).collect();
@@ -372,9 +390,12 @@ impl UpdatingInformation {
 pub struct DeviceInfo {
     pub name: String,
     pub channels: Vec<String>,
+    // this initial rate can probably be gotten rid of and then in the app the initial rate can be set by calling the rpc function
     pub initial_rate: f32,
+    // holds the information about "viewers" available for the connected device
     pub viewers: Vec<String>,
     pub viewer_rpcs: Vec<Vec<String>>,
+    pub viewer_rpcs_isbool: Vec<Vec<bool>>,
     // TODO: channel data types? rate? etc
     // TODO: firmware version?
     // TODO: hw version?
@@ -404,10 +425,11 @@ impl DeviceInfo {
             initial_rate: 20 as f32,
             viewers: Vec::new(),
             viewer_rpcs: Vec::new(),
+            viewer_rpcs_isbool: Vec::new(),
         }
     }
 
-    pub fn new_device(name:String, columns: Vec<String>, viewers: Vec<String>, viewer_rpcs: Vec<Vec<String>>) -> DeviceInfo {
+    pub fn new_device(name:String, columns: Vec<String>, viewers: Vec<String>, viewer_rpcs: Vec<Vec<String>>, viewer_rpcs_isbool: Vec<Vec<bool>>) -> DeviceInfo {
         let mut channels = Vec::new();
         for column_name in columns {
             channels.push(column_name.into());
@@ -418,6 +440,7 @@ impl DeviceInfo {
             initial_rate: 20 as f32,
             viewers: viewers,
             viewer_rpcs: viewer_rpcs,
+            viewer_rpcs_isbool: viewer_rpcs_isbool,
         }
     }
 }
@@ -686,12 +709,12 @@ impl Device {
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initial_rate: 20 as f32, viewers: Vec::new(), viewer_rpcs: Vec::new()}};
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initial_rate: 20 as f32, viewers: Vec::new(), viewer_rpcs: Vec::new(), viewer_rpcs_isbool: Vec::new()}};
 
         let columns = device.column_names();
         let name = device.name();
-        let (viewers, viewer_rpcs) = device.status();
-        device.info = DeviceInfo::new_device(name, columns, viewers, viewer_rpcs);
+        let (viewers, viewer_rpcs, viewer_rpcs_isbool) = device.status();
+        device.info = DeviceInfo::new_device(name, columns, viewers, viewer_rpcs, viewer_rpcs_isbool);
         Ok(device)
     }
 
@@ -781,12 +804,12 @@ impl Device {
             tx: tx_sender,
             rx: rx_receiver,
             rpc: rpc_receiver,
-            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initial_rate: 20 as f32, viewers: Vec::new(), viewer_rpcs: Vec::new()}};
+            info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initial_rate: 20 as f32, viewers: Vec::new(), viewer_rpcs: Vec::new(), viewer_rpcs_isbool: Vec::new()}};
 
         let columns = device.column_names();
         let name = device.name();
-        let (viewers, viewer_rpcs) = device.status();
-        device.info = DeviceInfo::new_device(name, columns, viewers, viewer_rpcs);
+        let (viewers, viewer_rpcs, viewer_rpcs_isbool) = device.status();
+        device.info = DeviceInfo::new_device(name, columns, viewers, viewer_rpcs, viewer_rpcs_isbool);
         Ok(device)
     }
 
@@ -902,23 +925,30 @@ impl Device {
         return resp.clone();
     }
     
-    pub fn send_and_interpret_rpc(&self, rpc_call: String, arg: Option<String>, updating_information: &mut UpdatingInformation) ->  (Option<TYPES>, Packet){
+    pub fn send_and_interpret_rpc(&self, rpc_call: String, arg: Option<String>, updating_information: &mut UpdatingInformation) ->  (Option<TYPES>, Option<bool>,Packet){
         let packet = self.send_rpc("rpc.info".to_string(), Some(rpc_call.clone()), updating_information, TYPES::StringType);
         let rpc_type;
+        let isbool;
         match packet {
-            Packet::RPCErrorData(ref _sd) => {return (None, packet)},
-            Packet::RPCResponseData(sd) => {rpc_type = Some(TYPES::from_u8(sd.reply_payload[0]).unwrap());}
+            Packet::RPCErrorData(ref _sd) => {return (None, None, packet)},
+            Packet::RPCResponseData(sd) => {rpc_type = Some(TYPES::from_u8(sd.reply_payload[0]).unwrap());
+                match rpc_type.unwrap() {
+                    TYPES::U8 => {isbool = true}
+                    TYPES::I8 => {isbool = true}
+                    _ => {isbool = false}
+                }
+            }
             _ => {panic!("Error!");}
         }
         //println!("{:?}", rpc_type);
         let response = self.send_rpc(rpc_call, arg, updating_information, rpc_type.unwrap());
-        return (rpc_type, response);
+        return (rpc_type, Some(isbool), response);
     
     }
 
-    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> String{
+    pub fn rpc_data(&self, rpc_call: String, arg: Option<String>) -> (String, Option<bool>){
         let mut updating_information = UpdatingInformation::default();
-        let (rpc_type, response) = match arg {
+        let (rpc_type, isbool, response) = match arg {
             Some(v) => {self.send_and_interpret_rpc(rpc_call, Some(v.to_string()) , &mut updating_information)}
             None => {self.send_and_interpret_rpc(rpc_call, None , &mut updating_information)}
         };
@@ -951,13 +981,21 @@ impl Device {
             }
             None => {}
         }
-        parsed_response
+        return (parsed_response, isbool);
+    }
+
+    pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> String {
+        // general rpc function that gets passed up to the typescript side for rpc calls in the app
+        // this separate function exists just because I didn't want the rpc function in the app to return isbool
+        let (parsed_response, _isbool) = self.rpc_data(rpc_call, arg);
+        return parsed_response;
     }
 
     pub fn data_rate(&self, value: Option<f32>) -> f32 {
         //ideally updating_information would be accessible by entire Device class
+        //this function is likely not necessary now that I have made a more general RPC function, same with the name and column names function
         let mut updating_information = UpdatingInformation::default();
-        let (_rpc_type, response) = match value {
+        let (_rpc_type, _isbool, response) = match value {
             Some(v) => {self.send_and_interpret_rpc("data.rate".to_string(), Some(v.to_string()) , &mut updating_information)}
             None => {self.send_and_interpret_rpc("data.rate".to_string(), None , &mut updating_information)}
         };
@@ -970,7 +1008,7 @@ impl Device {
 
     pub fn column_names(&self) -> Vec<String> {
         let mut updating_information = UpdatingInformation::default();
-        let (_rpc_type, response) = self.send_and_interpret_rpc("data.stream.columns".to_string(), None, &mut updating_information);
+        let (_rpc_type, _isbool, response) = self.send_and_interpret_rpc("data.stream.columns".to_string(), None, &mut updating_information);
         match response {
             Packet:: RPCResponseData(sd) => {str::from_utf8(&sd.reply_payload).unwrap().split(" ").map(|s| s.to_string()).collect()}
             _ => {panic!("Error")}
@@ -979,15 +1017,15 @@ impl Device {
 
     pub fn name(&self) -> String {
         let mut updating_information = UpdatingInformation::default();
-        let (_rpc_type, response) = self.send_and_interpret_rpc("dev.name".to_string(), None, &mut updating_information);
+        let (_rpc_type, _isbool, response) = self.send_and_interpret_rpc("dev.name".to_string(), None, &mut updating_information);
         match response {
             Packet:: RPCResponseData(sd) => {str::from_utf8(&sd.reply_payload).unwrap().to_string()}
             _ => {panic!("Error")}
         }
     }
 
-    pub fn status(&self) -> (Vec<String>, Vec<Vec<String>>) {
-        //read status from rpc, right now hard coded to say scalar, later this will have more features than just a name (rpc calls)
+    pub fn status(&self) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<bool>>) {
+        //read status (what viewers are available) from rpc, right now hard coded for testing purposes
         if self.name() == "VMR" || self.name() == "vmr" {
             let mut viewer_info = Vec::new();
             let mut viewers = Vec::new();
@@ -995,13 +1033,30 @@ impl Device {
             viewers.push("Laser".to_string());
             viewers.push("Vector".to_string());
             viewers.push("Heater".to_string());
-            let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string()];
+            let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string(), "bar.data.active".to_string(), "therm.data.active".to_string()];
             let laser_rpcs = vec!["dev.serial".to_string()];
-            viewer_info.push(scalar_rpcs);
-            viewer_info.push(laser_rpcs);
-            return (viewers, viewer_info);
+            viewer_info.push(scalar_rpcs.clone());
+            viewer_info.push(laser_rpcs.clone());
+            let mut isbool = Vec::new();
+            let mut isbool_scalar = Vec::new();
+            let mut isbool_laser = Vec::new();
+            for rpc in scalar_rpcs {
+                match self.rpc_data(rpc, None).1 {
+                    Some(isbool) => {isbool_scalar.push(isbool);}
+                    _ => {}
+                }
+            }
+            for rpc in laser_rpcs {
+                match self.rpc_data(rpc, None).1 {
+                    Some(isbool) => {isbool_laser.push(isbool);}
+                    _ => {}
+                }
+            }
+            isbool.push(isbool_scalar);
+            isbool.push(isbool_laser);
+            return (viewers, viewer_info, isbool);
         } else {
-            return (Vec::new(), Vec::new());
+            return (Vec::new(), Vec::new(), Vec::new());
         }
     }
 }

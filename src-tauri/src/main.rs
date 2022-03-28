@@ -103,6 +103,7 @@ impl DeviceJuggler {
         thread::spawn(move || DeviceJuggler::loop_packets(app, device_tx, tx_receiver));
         let rate = self.device.as_ref().unwrap().data_rate(None);
         //self.device.as_ref().unwrap().info.initial_rate = rate;
+        println!("{:?}", self.rpc("bar.data.active".to_string(), None));
         let mut info = self.device.as_ref().unwrap().info.clone();
         info.initial_rate = rate;
         return Ok(info);
