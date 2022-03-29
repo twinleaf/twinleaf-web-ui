@@ -13,6 +13,7 @@ export type LogDevicePacket = {
   log_message: string;
 };
 
+// Esme: this is the piece that gets filled in main.rs (see loop_packets())
 export type DataDevicePacket = {
   packet_type: "data";
   timestamp: number;
@@ -26,6 +27,8 @@ export type DeviceDesc = {
   url: string;
   desc: string;
 };
+
+//Esme: Here's deviceInfo.  If you add more elements on the Rust side, add them here on the typescript side too
 export type DeviceInfo = {
   channels: string[];
   name: string;
@@ -44,6 +47,8 @@ export interface API {
   enumerateDevices: () => Promise<DeviceDesc[]>;
   connectDevice: (uri: string) => Promise<DeviceInfo>;
   disconnect: () => Promise<void>;
+  //Esme: here are the two functions that I made on the rust side and then passed them on over here.  again data_rate is probably not necessary
+  //Esme: after you add new functions here, you have to define them below
   data_rate: (value: number) => Promise<number>;
   rpc: (rpc_call: string, arg: string | null) => Promise<string>;
 }
@@ -78,6 +83,8 @@ export const TauriAPI: API = {
     return rate;
   },
   rpc: async (rpc_call: string, arg: string | null) => {
+    //Esme: important note: I had to change rpc_call to rpcCall here, not sure when this issue would come up again, but if you see
+    //something where it can't recognize a particular call from the Rust, you might need to change out of snakecase once you are on the ts side.
     const reply: string = await invoke("rpc", {rpcCall: rpc_call, arg: arg});
     console.log(reply);
     return reply;

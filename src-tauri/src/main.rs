@@ -70,10 +70,12 @@ impl DeviceJuggler {
         Device::enumerate_devices()
     }
 
+    // Esme: data_rate function, can probably be deleted with some changes to the app now that I have made a general rpc function
     pub fn data_rate(&self, value: Option<f32>) -> f32 {
         Device::data_rate(&self.device.as_ref().unwrap(), value)
     }
 
+    //Esme: general rpc function, takes an optional argument
     pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> String {
         println!("rpc being called");
         let reply = Device::rpc(&self.device.as_ref().unwrap(), rpc_call, arg);
@@ -103,7 +105,6 @@ impl DeviceJuggler {
         thread::spawn(move || DeviceJuggler::loop_packets(app, device_tx, tx_receiver));
         let rate = self.device.as_ref().unwrap().data_rate(None);
         //self.device.as_ref().unwrap().info.initial_rate = rate;
-        println!("{:?}", self.rpc("bar.data.active".to_string(), None));
         let mut info = self.device.as_ref().unwrap().info.clone();
         info.initial_rate = rate;
         return Ok(info);
@@ -141,8 +142,11 @@ impl DeviceJuggler {
                             app.emit_all(
                                 "device-packet",
                                 DeviceMessage::new_data(
+                                    //Esme: here is where data gets sent to be plotted in the app.  I pass the sample number for the dummy and the for the calculated data rate used for testing purposes
+                                    //Esme: this timestamp is just a single timestamp, future improvements might have arrays of data sent for higher data rates (TODO?)
                                     updating_information.data_point.timestamp,
                                     sd.sample_num,
+                                    //Esme: holds the data that has been parsed using metadata (aka has correct type)
                                     updating_information.data_point.data.clone()
                                 ),
                             )
@@ -284,6 +288,8 @@ fn main() {
             //let window_ = window.clone();
             window.on_menu_event(move |event| {
               match event.menu_item_id() {
+                //Esme: here I just made some edits to have a quit button - I could never get the hide and show buttons to work, but I am not sure that we needed them
+                //Esme: The original code for this part before I messed with it is just commented out below
                 "quit" => {
                     std::process::exit(0);
                 }

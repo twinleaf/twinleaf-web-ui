@@ -17,6 +17,8 @@ import { DataBuffer } from "./plotting";
 import { APIType, DeviceId, DeviceInfo, API } from "./api";
 import { CombinedSpectrumPlot, TracePlot } from "./plot_components";
 
+//Esme: here I would add all the options for the viewers when we have them.  right now I have all the tabs everytime you open the app, but only the ones listed from the device actually have
+//stuff inside them.  In the future, we might want to have these tabs appear after connecting to a device, but that might require a lot of restructuring
 type ContentPane = "configure" | "plot" | "about" | "Scalar" | "Vector" | "Heater" | "Laser";
 
 export const App = () => {
@@ -63,13 +65,13 @@ export const App = () => {
             </a>
           </h4>
         ) : activePane === "Scalar" && dataBuffer && dataBuffer.viewers.includes("Scalar") ? (
-          <ScalarPane dataBuffer={dataBuffer} api ={api} />
+          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["field", "field2"]} noisePlot = {true} noisePlotNum = {2} viewer = "Scalar" />
         ) : activePane === "Vector" && dataBuffer && dataBuffer.viewers.includes("Vector") ? (
           <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {3}/>
         ) : activePane === "Heater" && dataBuffer && dataBuffer.viewers.includes("Heater") ? (
           <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {2}/>
         ) : activePane === "Laser" && dataBuffer && dataBuffer.viewers.includes("Laser") ? (
-          <LaserPane dataBuffer={dataBuffer} api ={api} />
+          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["laser.measure", "laser.output", "supply.current"]} noisePlot = {false} noisePlotNum = {0} viewer = "Laser" />
         ) : null}
       </Container>
     </>
@@ -258,6 +260,7 @@ const TopBar = ({
   );
 };
 
+//Esme: Slider definition, Not sure if we want to keep sliders or replace them all with entry boxes
 type SliderProps = {
   min: number;
   max: number;
@@ -274,7 +277,91 @@ const Slider = ({ min, max, onChange, initial }: SliderProps) => {
 };
 
 
+const TimeReading = ({dataBuffer}: {dataBuffer: DataBuffer}) => {
+  const [value, setValue] = useState(dataBuffer.size/dataBuffer.dataRate);
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setValue(e.target.valueAsNumber);
+  };
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    await dataBuffer.setWindowSize(value*dataBuffer.dataRate);
+  }
+  return(
+    <form id = "timescale" onSubmit = {handleSubmit} >
+    <p></p>
+          <label>
+              Window Size: &nbsp;
+              <input type="number" name= "timescale" value = {value} onChange = {handleChange} size = {5}/>
+              &nbsp; Seconds
+            </label>
+    </form>
+    )
+}
 
+const Reading = ({name, api, dataBuffer, vindex, rpcindex}: {name: string, api: API, dataBuffer: DataBuffer, vindex: number, rpcindex: number}) => {
+  const [enabled, setEnabled] = useState(true);
+  useEffect(() => {
+    if (dataBuffer.viewer_rpcs_isbool[vindex][rpcindex] == true) {
+      api.rpc(name,null).then((initialValue) => {
+        // not sure if this is the best check here - I imagine this will change when the metadata changes
+        if (initialValue == "\u{1}") {
+          setEnabled(true);
+        } else {
+          setEnabled(false);
+        }
+      });
+    }
+  }, [])
+  const handleChecking = () => {
+    setEnabled(!enabled);
+    if (!enabled == false) {
+      console.log("here");
+      api.rpc(name, "0");
+    } else {
+      api.rpc(name, "1");
+    }
+  }
+  const [value, setValue] = useState("loading");
+  useEffect(() => {
+    api.rpc(name,null).then((initialValue) => setValue(initialValue));
+  }, [])
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    //console.log("running handle change");
+    setValue(e.target.value);
+  };
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    await api.rpc(name,value);
+  }
+if (dataBuffer.viewer_rpcs_isbool[vindex][rpcindex] == false){ 
+  return(
+  <form id = {name} onSubmit = {handleSubmit} >
+  <p></p>
+        <label>
+            {name}
+            &nbsp;
+            <input type="text" name="name" value = {value} onChange = {handleChange} size = {5}/>
+            &nbsp;&nbsp;&nbsp;
+          </label>
+  </form>
+  )
+}
+else {
+  return(
+    <form id = {name} onSubmit = {handleSubmit} >
+    <p></p>
+          <label>
+              <input type="checkbox" id="name" name = "name" checked = {enabled} onChange = {handleChecking} size = {5}/>
+              {name}
+              &nbsp;&nbsp;&nbsp;
+            </label>
+    </form>
+  )
+}
+}
+
+
+//Esme: General plot setup, has the main plots (TracePlot) and noise plot (CombinedSpectrumPlot)
 type PlotPaneProps = {
   dataBuffer: DataBuffer;
   api: API;
@@ -382,102 +469,30 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
   );
 };
 
-const TimeReading = ({dataBuffer}: {dataBuffer: DataBuffer}) => {
-  const [value, setValue] = useState(dataBuffer.size/dataBuffer.dataRate);
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setValue(e.target.valueAsNumber);
-  };
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    await dataBuffer.setWindowSize(value*dataBuffer.dataRate);
-  }
-  return(
-    <form id = "timescale" onSubmit = {handleSubmit} >
-    <p></p>
-          <label>
-              Window Size: &nbsp;
-              <input type="number" name= "timescale" value = {value} onChange = {handleChange} size = {5}/>
-              &nbsp; Seconds
-            </label>
-    </form>
-    )
-}
-
-const Reading = ({name, api, dataBuffer, vindex, rpcindex}: {name: string, api: API, dataBuffer: DataBuffer, vindex: number, rpcindex: number}) => {
-  const [enabled, setEnabled] = useState(true);
-  useEffect(() => {
-    if (dataBuffer.viewer_rpcs_isbool[vindex][rpcindex] == true) {
-      api.rpc(name,null).then((initialValue) => {
-        // not sure if this is the best check here - I imagine this will change when the metadata changes
-        if (initialValue == "\u{1}") {
-          setEnabled(true);
-        } else {
-          setEnabled(false);
-        }
-      });
-    }
-  }, [])
-  const handleChecking = () => {
-    setEnabled(!enabled);
-    if (!enabled == false) {
-      console.log("here");
-      api.rpc(name, "0");
-    } else {
-      api.rpc(name, "1");
-    }
-  }
-  const [value, setValue] = useState("loading");
-  useEffect(() => {
-    api.rpc(name,null).then((initialValue) => setValue(initialValue));
-  }, [])
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    //console.log("running handle change");
-    setValue(e.target.value);
-  };
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    await api.rpc(name,value);
-  }
-if (dataBuffer.viewer_rpcs_isbool[vindex][rpcindex] == false){ 
-  return(
-  <form id = {name} onSubmit = {handleSubmit} >
-  <p></p>
-        <label>
-            {name}
-            &nbsp;
-            <input type="text" name="name" value = {value} onChange = {handleChange} size = {5}/>
-            &nbsp;&nbsp;&nbsp;
-          </label>
-  </form>
-  )
-}
-else {
-  return(
-    <form id = {name} onSubmit = {handleSubmit} >
-    <p></p>
-          <label>
-              <input type="checkbox" id="name" name = "name" checked = {enabled} onChange = {handleChecking} size = {5}/>
-              {name}
-              &nbsp;&nbsp;&nbsp;
-            </label>
-    </form>
-  )
-}
-}
-
-type LaserPaneProps = {
+type ViewerPaneProps = {
   dataBuffer: DataBuffer;
   api: API;
+  plots: string[];
+  noisePlot: boolean;
+  noisePlotNum: number;
+  viewer: string;
 };
-const LaserPane = ({ dataBuffer, api:API}: LaserPaneProps) => {
+const ViewerPane = ({ dataBuffer, api:API, plots, noisePlot, noisePlotNum, viewer}: ViewerPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
   const [paused, setPaused] = useState(false);
   const colors = ["red", "green", "blue"];
-  const index = dataBuffer.viewers.indexOf("Laser");
-  const laserMeasureIndex = dataBuffer.channelNames.indexOf("laser.measure");
-  const laserOutputIndex = dataBuffer.channelNames.indexOf("laser.output");
-  const supplyCurrentIndex = dataBuffer.channelNames.indexOf("supply.current");
-
+  const index = dataBuffer.viewers.indexOf(viewer);
+  let plotIndices = []
+  for (let i = 0; i < plots.length; i++) {
+    let id = dataBuffer.channelNames.indexOf(plots[i]);
+    if (id != -1){
+      plotIndices.push(dataBuffer.channelNames.indexOf(plots[i]));
+    }
+  }
+  const NoisePlot = noisePlot?
+    <CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {noisePlotNum} />
+    : null;
+  console.log(dataBuffer.viewer_rpcs[index])
   return (
     <div>
       <div style={{display: 'flex'}}>
@@ -495,52 +510,19 @@ const LaserPane = ({ dataBuffer, api:API}: LaserPaneProps) => {
       ))
       }
       </div>
-      {
+      {plotIndices.map((i) => (
         <TracePlot
-          key={laserMeasureIndex}
-          color={colors[laserMeasureIndex % colors.length]}
-          channelIndex={laserMeasureIndex}
-          dataBuffer={dataBuffer}
-          showTitle={false}
-          showAxis={false}
-          paused={paused}
-          height = {400}
-        />
-      }
-      {
-        <TracePlot
-          key={laserOutputIndex}
-          color={colors[laserOutputIndex % colors.length]}
-          channelIndex={laserOutputIndex}
-          dataBuffer={dataBuffer}
-          showTitle={false}
-          showAxis={false}
-          paused={paused}
-          height = {400}
-        />
-      }
-      {
-        <TracePlot
-          key={supplyCurrentIndex}
-          color={colors[supplyCurrentIndex % colors.length]}
-          channelIndex={supplyCurrentIndex}
-          dataBuffer={dataBuffer}
-          showTitle={false}
-          showAxis={false}
-          paused={paused}
-          height = {400}
-        />
-      }
-      {dataBuffer.viewer_rpcs[index].map((name, _i) => (
-      <form>
-        <label>
-          {name}
-          <input type="text" name="name"/>
-        </label>
-      </form>
-      ))
-      }
-      <br></br>
+        key={i}
+        color={colors[i % colors.length]}
+        channelIndex={i}
+        dataBuffer={dataBuffer}
+        showTitle={false}
+        showAxis={false}
+        paused={paused}
+        height = {400}
+    />
+      ))}
+      {NoisePlot}
     </div>
   );
 };

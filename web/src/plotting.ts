@@ -14,6 +14,7 @@ import { DataDevicePacket, DeviceInfo } from "./api";
  * those should be recorded here, replacing the .timestamps array and
  * making the observedHz calculation obsolete.
  */
+
 export class DataBuffer {
   size: number;
   data: number[][];
@@ -24,7 +25,9 @@ export class DataBuffer {
   sampleReceivedTimes: number[] = [];
   alreadySeen: WeakSet<any> = new WeakSet();
   scheduledPlotUpdate: number;
+  //Esme: I added these 4 fields, not sure if dataRate is necessary now that we have a more in depth rpc call system
   dataRate: number;
+  //Esme: This is where the information about the viewers goes and then gets used by app.ts to make the entry boxes/checkboxes
   viewers: string[];
   viewer_rpcs: string[][];
   viewer_rpcs_isbool: boolean[][];
@@ -142,7 +145,8 @@ export class DataBuffer {
    */
   spectrum = (channel: number, n = 4096): { amplitudes: number[]; freqs: number[] } => {
     const d = this.data[channel];
-    //TO DO: truncating at power of 2 number of points 
+    //Esme: TO DO: check out noise plot - power spectral density?
+    //Esme: truncating at power of 2 number of points 
     const size = 2 ** Math.floor(Math.log2(Math.min(d.length, n)));
     const hz = this.dataRate;
     if (size < 1 || !hz) return { amplitudes: [], freqs: [] };

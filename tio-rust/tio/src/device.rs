@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::str;
 
-//enum to hold types, this allows me to return values of different types - helpful because different packets/fields come in with different data types
+//Esme: enum to hold types, this allows me to return values of different types - helpful because different packets/fields come in with different data types
 #[derive(Debug, Clone, Serialize)]
 pub enum Value {
     U8(u8),
@@ -33,8 +33,8 @@ pub enum Value {
     NoneType(),
 }
 
-// this is just a function to convert a backed to a raw packet.  this is used to write in the tcp function.  
-// this is sort of a temporary fix that doesn't handle the different routing bytes for different sensors
+// Esme: this is just a function to convert a backed to a raw packet.  this is used to write in the tcp function.  
+// Esme: this is sort of a temporary fix that doesn't handle the different routing bytes for different sensors
 fn packet_to_raw(packet: Packet, routing_bytes: Vec<u8>) -> RawPacket {
     let msg;
     match packet {
@@ -45,9 +45,9 @@ fn packet_to_raw(packet: Packet, routing_bytes: Vec<u8>) -> RawPacket {
     RawPacket{packet_type: PacketType::RPCRequest, routing_len: routing_bytes.len() as u8, payload_len: msg.len() as u16, payload: msg, routing: routing_bytes}
 }
 
-//holds the different replies that can come from an rpc response
-//error handling doesn't exist too much on the app side, but these might be used in a tio-rpc equivalent or eventually passed to the app somehow
-//a future thing to think about might be how we want the error to show up in the app.  Maybe a pop up message?
+//Esme: holds the different replies that can come from an rpc response
+//Esme: error handling doesn't exist too much on the app side, but these might be used in a tio-rpc equivalent or eventually passed to the app somehow
+//Esme: a future thing to think about might be how we want the error to show up in the app.  Maybe a pop up message?
 #[derive(Debug)]
 pub enum Replies {
     Response(Vec<u8>),
@@ -129,10 +129,10 @@ impl ErrorCode {
 }
 
 
-//here starts the complicated structure I have to handle metadata.  I am almost positive there is a better way to do this part or at least a better naming system
-//I have mostly just followed tio-python to my best ability
+//Esme: here starts the complicated structure I have to handle metadata.  I am almost positive there is a better way to do this part or at least a better naming system
+//Esme: I have mostly just followed tio-python to my best ability
 
-// the order of events sort of follows this sequence:
+//Esme: the order of events sort of follows this sequence:
     // First, we send an rpc command to send the metadata
     // While this is happening, packets are coming in.  
     // If the metadata has not come yet and we get a new StreamData packet (the packet type with the data points), we just ignore and send an empty packet
@@ -152,10 +152,10 @@ pub struct StreamCompilation {
 
 #[derive(Debug, Clone)]
 pub struct SensorData {
-    //stream_compilation holds interesting information from metadata -> column_name, timebase, and data_type
+    //Esme: stream_compilation holds interesting information from metadata -> column_name, timebase, and data_type
     pub stream_compilation: Vec<StreamCompilation>,
     source_data: HashMap<u16, SourceData>,
-    //stream description holds the metadata packet when it first comes in (indicies to correct source and timebase)
+    //Esme: stream description holds the metadata packet when it first comes in (indicies to correct source and timebase)
     pub stream_description: StreamDescription,
     timebase_data: HashMap<u16, TimebaseData>,
 }
@@ -167,7 +167,7 @@ impl Default for SensorData {
 impl SensorData{
 
     pub fn compile(&mut self) -> () {
-        //function to compile the metadata into a setup structure.  this setup gets stored as a vec of streamCompilation.
+        //Esme: function to compile the metadata into a setup structure.  this setup gets stored as a vec of streamCompilation.
         let mut stream_compilations = Vec::new();
         let mut source;
         let timebase;
@@ -175,7 +175,7 @@ impl SensorData{
             Some(existing_timebase) => timebase = existing_timebase,
             None => panic!("Timebase id not found, try power cycling."),
         }
-        //calculate period for each source here
+        //Esme: calculate period 
         let mut timebase_period_us = 
             if timebase.timebase_period_num_us != 0 && timebase.timebase_period_denom_us !=0 {
                 timebase.timebase_period_num_us as f32/timebase.timebase_period_denom_us as f32
@@ -188,12 +188,11 @@ impl SensorData{
                 Some(existing_source) => source = existing_source,
                 None => panic!("Source id not found, try power cycling."),
             }
+            // calculates the period for each source - for the app, we really only pass on the timestamps for the fastest source, but I do save the timestamps for all in the stream_compilation vector
             timebase_period_us = timebase_period_us*stream.stream_period as f32;
-            //let stream_compilation_info = StreamCompilation{column_names: timebase_period_us: timebase_period_us, data_type: source.source_type};
             if source.source_column_names.len() > 1 {
                 let column_name = &source.source_name;
                 for name in &source.source_column_names {
-                    //fix cloning issue here to save memory
                     let stream_compilation = StreamCompilation{column_name: column_name.to_string()+"."+name, timebase_period_us: timebase_period_us, data_type: source.source_type};
                     stream_compilations.push(stream_compilation);
                 }
@@ -210,7 +209,7 @@ impl SensorData{
 }
 
 
-// data point is the actual struct that we will use to pass our parsed data and timestamp
+//Esme: data point is the actual struct that we will use to pass our parsed data and timestamp
 #[derive(Debug, Serialize, Clone)]
 pub struct DataPoint {
     pub timestamp: f32,
@@ -218,9 +217,9 @@ pub struct DataPoint {
     pub data: Vec<f64>,
 }
 
-// updating information holds things that update over time.  
-// Basically just puts everything in one place so we don't have to pass a bunch of things into the functions that are reading from the sensor
-// I am not sure it makes sense to put the rpc hash here.  Right now I have it here, but they are not used together.  That is, the rpc calls just make a new 
+//Esme: updating information holds things that update over time.  
+//Esme: Basically just puts everything in one place so we don't have to pass a bunch of things into the functions that are reading from the sensor
+//Esme: I am not sure it makes sense to put the rpc hash here.  Right now I have it here, but they are not used together.  That is, the rpc calls just make a new 
 // version of UpdatingInformation and don't use the same one that the data_point one is.  This could likely be combined or changed in the future.
 #[derive(Debug, Clone)]
 pub struct UpdatingInformation{
@@ -234,7 +233,13 @@ impl Default for UpdatingInformation{
     }
 }
 impl UpdatingInformation {
-    // this is the function that will get called everytime a new packet comes in
+    //Esme: this is the function that will get called everytime a new packet comes in.  
+    //Esme: specifically, with rust channels, which is how the packets are being stored, there are several times when i can say a packet is read or similar language so I am just going 
+    // to describe the chronological place where this function is called:
+        // packet is read in via usb or tcp
+        // packet is placed into a channel
+        // packet is read out from this channel using .recv()
+        //interpret_packet gets called on the packet that is getting read out by this .recv().
     pub fn interpret_packet(&mut self, packet: Packet) -> (){
         use Packet::*;
         match packet.clone() {
@@ -249,7 +254,8 @@ impl UpdatingInformation {
             _ => {}
         }
     }
-    //this gets called when a StreamData packet comes in.  It uses our compiled metadata to format the data correctly and parses according the correct type
+    //Esme: this gets called when a StreamData packet comes in.  It uses our compiled metadata to format the data correctly and parses according the correct type
+    //Esme: The commented out parts with Value are for if you wanted to pass on the data and perserve its type.  the current version parses based on type, then casts to f64 for the webapp
     pub fn interpret_datapoint(&mut self, streamdata: StreamData) -> () {
         let mut datum = DataPoint{timestamp: 0.0, column_names: Vec::new(), data: Vec::new()};
         let mut i = 0;
@@ -300,7 +306,7 @@ impl UpdatingInformation {
                         break;
                     }
                 },
-                //no 24 bit type in rust, not sure what to do here, just grab 3 bytes??
+                //Esme: TODO: no 24 bit type in rust, not sure what to do here, just grab 3 bytes??
                 TYPES::U24 => {}
                 TYPES:: I24 => {}
                 TYPES::U32 => {
@@ -386,6 +392,9 @@ impl UpdatingInformation {
 /// at device initialization time.
 ///
 /// TODO: should this live in `tio-packet`?
+/// 
+// Esme: From my understanding, DeviceInfo holds the information that we can grab at the beginning of connection and will stay the same (name, channels, available viewers, etc)
+// Esme: If you wanted to add a new element to this, you would add it here on the device page in the necessary places, and then go to api.ts to add it to the javascript and follow through from there
 #[derive(Debug, Serialize, Clone)]
 pub struct DeviceInfo {
     pub name: String,
@@ -408,6 +417,8 @@ impl DeviceInfo {
     /// TODO: not even sure these channel names/mappings are correct. method name should be
     /// different, and/or probably shouldn't live as a method on the DeviceInfo struct. Could be
     /// part of the dummy device creation code?
+    /// 
+    // Esme: This is just the old hardcoded function for VMR, we can probably delete this or save it for the dummy 
     pub fn new_vmr(name: String) -> DeviceInfo {
         DeviceInfo {
             name,
@@ -429,6 +440,7 @@ impl DeviceInfo {
         }
     }
 
+    // Esme: here is the method I made for creating a new device, not really sure if this is needed, you can probably just make a new instance of DeviceInfo but maybe this is concise.
     pub fn new_device(name:String, columns: Vec<String>, viewers: Vec<String>, viewer_rpcs: Vec<Vec<String>>, viewer_rpcs_isbool: Vec<Vec<bool>>) -> DeviceInfo {
         let mut channels = Vec::new();
         for column_name in columns {
@@ -474,7 +486,10 @@ impl DeviceInfo {
 /// (like RPC responses and RPC errors). This would make application logic of doing RPCs easier:
 /// just write a message, then poll for a result, while other message types spool up in the stream
 /// "rx" channel.
-/// 
+
+// Esme: Everytime a packet is read from the sensor, this function gets called right after we grab a raw packet from the sensor using serial or tcp
+// Esme: this function does a couple of things, but it mainly just converts the raw packets to their correct packet type and adds them into the channel
+// Esme: this function also does the "waiting" for the metadata.  That is, if no metadata, ignore streamzero packets and send empty packets and trash the earlier data
 pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &crossbeam_channel::Sender<Packet>, rpc_send: &crossbeam_channel::Sender<tio_packet::Packet>) -> (){
     use PacketType::*;
     let packet = match raw_packet.packet_type {
@@ -482,6 +497,7 @@ pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &cross
             Packet::Log(LogMessage::from_bytes(&raw_packet.payload))
         }
         StreamZero => {
+            // Esme: Here is the part that waits for the metadata to start sending in data.  this is why there is a gap when starting the OMG, not sure if this could be improved upon
             if *metadata_p {
                 Packet::StreamData(StreamData::from_bytes(&raw_packet.payload))
             }
@@ -512,7 +528,8 @@ pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &cross
         RPCError => {
             let rpcerrorpacket = RPCErrorData::from_bytes(&raw_packet.payload);
             Packet::RPCErrorData(rpcerrorpacket)}
-
+        
+        // Esme: I never ended up doing anything with Text or Invalid - I am not sure what those were but that might be something to handle
         Text | Invalid | RPCRequest => {
             println!(
                 "ignoring unhandled packet type: {:?}",
@@ -523,6 +540,8 @@ pub fn grab_packet(metadata_p: &mut bool, raw_packet: RawPacket, rx_send: &cross
     };
 
     match packet {
+        // Esme: There are two separate channels, one for rpc packets and one for all the other packets
+        // Esme: Changing the channels/adding more isn't too difficult if that ends up suiting your structure better
         Packet::Log(_) | Packet::StreamData(_) | Packet::TimebaseData(_) | Packet::SourceData(_) | Packet::StreamDescription(_) => {
             rx_send.send(packet).unwrap()
         }
@@ -655,10 +674,14 @@ impl Device {
         let mut stream = TcpStream::connect(host_port)?;
         //let mut stream = TcpStream::connect_timeout(&host_port.parse()?, Duration::from_secs(3))?;
         stream.set_nonblocking(true)?;
+
+        // Esme: I changed these channels to hold 10 but this was just arbitrary
         let (tx_sender, tx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) =
             channel::bounded(10);
         let (rpc_sender, rpc_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
         let (rx_sender, rx_receiver): (channel::Sender<Packet>, channel::Receiver<Packet>) = channel::bounded(10);
+
+        //Esme: send rpc request for metadata
         let req = Packet::RpcReq(RPCRequest::named_simple("data.send_all".to_string()));
         tx_sender.send(req).unwrap();
         thread::spawn(move || {
@@ -711,6 +734,8 @@ impl Device {
             rpc: rpc_receiver,
             info: DeviceInfo{name: "".to_string(), channels: Vec::new(), initial_rate: 20 as f32, viewers: Vec::new(), viewer_rpcs: Vec::new(), viewer_rpcs_isbool: Vec::new()}};
 
+        // Esme: Here is me filling up the deviceInfo struct from earlier.  Again, you probably don't need the new_device function/this could be better organized but this just
+        // fills in that initial information we need to start the web app
         let columns = device.column_names();
         let name = device.name();
         let (viewers, viewer_rpcs, viewer_rpcs_isbool) = device.status();
@@ -870,6 +895,12 @@ impl Device {
                 .unwrap();
         }
     }
+
+    //Esme: The rpc call infrastructure is split up into multiple functions and it is a bit confusing why and what each one does
+    //Esme: send_rpc takes a call, an optional argument, the updating information (essentially the rpc_hash), and a type and just returns either a response or an error packet
+
+    //Esme: TODO: The main issue with all this rpc stuff is right now, everytime an rpc call is sent, I make a new hashmap to hold the incoming responses.  
+    // Ideally there would be one global hashmap that gets updated with every rpc call, i just am not sure where to put this (i didn't want to have it in deviceInfo because that gets passed to the app)
     pub fn send_rpc(&self, rpc_call: String, arg: Option<String>, updating_information: &mut UpdatingInformation, rpc_type:TYPES) -> Packet {
         let resp;
         let existing_arg;
@@ -877,6 +908,8 @@ impl Device {
         let request_id = req_struct.req_id;
         use TYPES::*;
         match arg{
+            // Esme: format arg to be in correct type
+            // Esme: TODO: missing type metadata for particular rpc calls like "rpc.info" - right now default just makes arg a string
             Some(s) => {existing_arg = s;
                 match rpc_type {
                     U8 => {//println!("u8"); 
@@ -925,46 +958,50 @@ impl Device {
         return resp.clone();
     }
     
-    pub fn send_and_interpret_rpc(&self, rpc_call: String, arg: Option<String>, updating_information: &mut UpdatingInformation) ->  (Option<TYPES>, Option<bool>,Packet){
+    //Esme: send_and_interpret_rpc uses rpc.info to grab the metadata on rpc_call.  So we use send_rpc with rpc.info as its rpc_call, rpc_call as the arg, and string as the type to get the metadata
+    pub fn send_and_interpret_rpc(&self, rpc_call: String, arg: Option<String>, updating_information: &mut UpdatingInformation) ->  (Option<TYPES>, Packet){
         let packet = self.send_rpc("rpc.info".to_string(), Some(rpc_call.clone()), updating_information, TYPES::StringType);
         let rpc_type;
-        let isbool;
         match packet {
-            Packet::RPCErrorData(ref _sd) => {return (None, None, packet)},
+            Packet::RPCErrorData(ref _sd) => {return (None, packet)},
             Packet::RPCResponseData(sd) => {rpc_type = Some(TYPES::from_u8(sd.reply_payload[0]).unwrap());
-                match rpc_type.unwrap() {
-                    TYPES::U8 => {isbool = true}
-                    TYPES::I8 => {isbool = true}
-                    _ => {isbool = false}
-                }
             }
             _ => {panic!("Error!");}
         }
         //println!("{:?}", rpc_type);
+        // Esme: Once we have the metadata, we can send the actual rpc call with the correct type
         let response = self.send_rpc(rpc_call, arg, updating_information, rpc_type.unwrap());
-        return (rpc_type, Some(isbool), response);
+        return (rpc_type, response);
     
     }
 
     pub fn rpc_data(&self, rpc_call: String, arg: Option<String>) -> (String, Option<bool>){
+        //println!("{:?}", rpc_call);
         let mut updating_information = UpdatingInformation::default();
-        let (rpc_type, isbool, response) = match arg {
+        let (rpc_type, response) = match arg {
             Some(v) => {self.send_and_interpret_rpc(rpc_call, Some(v.to_string()) , &mut updating_information)}
             None => {self.send_and_interpret_rpc(rpc_call, None , &mut updating_information)}
         };
         let reply;
         match response {
             Packet:: RPCResponseData(sd) => {reply = Replies::Response(sd.reply_payload);}
-            _ => {panic!("Error")}
+            Packet:: RPCErrorData(sd) => {panic!("RPC ERROR {:?}",sd)}
+            _ => {panic!("RPC something else")}
         }
         let mut parsed_response = "".to_string();
+        // Esme: isbool just checks if the type is u8. this is for the webapp so that once we send a list of rpcs for each viewer, we can make 
+        // checkboxes for boolean rpc calls and entry boxes for the other ones
+        // this is not the best check for this, so there might need to be some edits to the metadata that like "data.isbool" or something rather than checking if it is a u8
+        let mut isbool = false;
         match rpc_type {
+            //Esme: format response to be in correct type
+            //Esme: TODO: missing type metadata for particular rpc calls like "rpc.info" - right now default just returns vector of bytes
             Some(resp_type) => { 
                 if let Replies::Response(payload) = reply{
                     use TYPES::*;
                     match resp_type {
-                        U8 => {parsed_response = str::from_utf8(&payload).unwrap().to_string();}
-                        I8 => {parsed_response = str::from_utf8(&payload).unwrap().to_string()}
+                        U8 => {parsed_response = str::from_utf8(&payload).unwrap().to_string(); isbool = true;}
+                        I8 => {parsed_response = str::from_utf8(&payload).unwrap().to_string(); isbool = true; }
                         U16 => {parsed_response = u16::from_le_bytes(payload.try_into().unwrap()).to_string();}
                         I16 => {parsed_response = i16::from_le_bytes(payload.try_into().unwrap()).to_string();}
                         U32 => {parsed_response = u32::from_le_bytes(payload.try_into().unwrap()).to_string();}
@@ -981,21 +1018,21 @@ impl Device {
             }
             None => {}
         }
-        return (parsed_response, isbool);
+        return (parsed_response, Some(isbool));
     }
 
     pub fn rpc(&self, rpc_call: String, arg: Option<String>) -> String {
-        // general rpc function that gets passed up to the typescript side for rpc calls in the app
-        // this separate function exists just because I didn't want the rpc function in the app to return isbool
+        //Esme: general rpc function that gets passed up to the typescript side for rpc calls in the app
+        //Esme: this separate function exists just because I didn't want the rpc function in the app to return isbool
         let (parsed_response, _isbool) = self.rpc_data(rpc_call, arg);
         return parsed_response;
     }
 
     pub fn data_rate(&self, value: Option<f32>) -> f32 {
-        //ideally updating_information would be accessible by entire Device class
-        //this function is likely not necessary now that I have made a more general RPC function, same with the name and column names function
+        //Esme: ideally updating_information would be accessible by entire Device class
+        //Esme: this function is likely not necessary now that I have made a more general RPC function, same with the name and column names function
         let mut updating_information = UpdatingInformation::default();
-        let (_rpc_type, _isbool, response) = match value {
+        let (_rpc_type, response) = match value {
             Some(v) => {self.send_and_interpret_rpc("data.rate".to_string(), Some(v.to_string()) , &mut updating_information)}
             None => {self.send_and_interpret_rpc("data.rate".to_string(), None , &mut updating_information)}
         };
@@ -1008,7 +1045,7 @@ impl Device {
 
     pub fn column_names(&self) -> Vec<String> {
         let mut updating_information = UpdatingInformation::default();
-        let (_rpc_type, _isbool, response) = self.send_and_interpret_rpc("data.stream.columns".to_string(), None, &mut updating_information);
+        let (_rpc_type, response) = self.send_and_interpret_rpc("data.stream.columns".to_string(), None, &mut updating_information);
         match response {
             Packet:: RPCResponseData(sd) => {str::from_utf8(&sd.reply_payload).unwrap().split(" ").map(|s| s.to_string()).collect()}
             _ => {panic!("Error")}
@@ -1017,7 +1054,7 @@ impl Device {
 
     pub fn name(&self) -> String {
         let mut updating_information = UpdatingInformation::default();
-        let (_rpc_type, _isbool, response) = self.send_and_interpret_rpc("dev.name".to_string(), None, &mut updating_information);
+        let (_rpc_type,response) = self.send_and_interpret_rpc("dev.name".to_string(), None, &mut updating_information);
         match response {
             Packet:: RPCResponseData(sd) => {str::from_utf8(&sd.reply_payload).unwrap().to_string()}
             _ => {panic!("Error")}
@@ -1025,16 +1062,16 @@ impl Device {
     }
 
     pub fn status(&self) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<bool>>) {
-        //read status (what viewers are available) from rpc, right now hard coded for testing purposes
-        if self.name() == "VMR" || self.name() == "vmr" {
+        //Esme: read status (what viewers are available) from rpc, right now hard coded for testing purposes
+        if self.name() == "VMR" || self.name() == "OMG" {
             let mut viewer_info = Vec::new();
             let mut viewers = Vec::new();
             viewers.push("Scalar".to_string());
             viewers.push("Laser".to_string());
             viewers.push("Vector".to_string());
             viewers.push("Heater".to_string());
-            let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string(), "bar.data.active".to_string(), "therm.data.active".to_string()];
-            let laser_rpcs = vec!["dev.serial".to_string()];
+            let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string()];//,"bar.data.active".to_string(), "therm.data.active".to_string()];
+            let laser_rpcs = vec!["dev.name".to_string()];
             viewer_info.push(scalar_rpcs.clone());
             viewer_info.push(laser_rpcs.clone());
             let mut isbool = Vec::new();
