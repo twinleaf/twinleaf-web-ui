@@ -166,7 +166,7 @@ export class DataBuffer {
       freqs.push((i * hz) / size);
     }
     // very naive way to make DC go away
-    amplitudes[0] = 0;
+    //amplitudes[0] = 0;
     return { freqs, amplitudes };
   };
 }

@@ -283,7 +283,6 @@ type PlotPaneProps = {
 };
 const PlotPane = ({ dataBuffer, api:API, numPlots, numNoise}: PlotPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-  const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
   const [initial_rate, setDataRate] = useState(dataBuffer.dataRate);
   const [paused, setPaused] = useState(false);
 
@@ -291,6 +290,8 @@ const PlotPane = ({ dataBuffer, api:API, numPlots, numNoise}: PlotPaneProps) => 
 
   const needsRPC = true;//typeof window.__TAURI__ !== "undefined";
   const dataSlider = needsRPC ? 
+  <div>
+  Data Rate: 
   <Slider
         min={20}
         max={1000}
@@ -301,28 +302,23 @@ const PlotPane = ({ dataBuffer, api:API, numPlots, numNoise}: PlotPaneProps) => 
         }}
         initial={initial_rate}
       />
+    {initial_rate} Hz
+  </div>
       : null;
 
   return (
     <div>
+      <div style={{display: 'flex'}}>
       <Button onClick={() => setPaused(false)} disabled={!paused}>
         Start plotting
       </Button>
       <Button onClick={() => setPaused(true)} disabled={paused}>
         Pause plotting
       </Button>
-      <Slider
-        min={1}
-        max={400}
-        onChange={(n: number) => {
-          dataBuffer.setWindowSize(n*dataBuffer.dataRate);
-          setWindowSize(n);
-        }}
-        initial={windowSize}//dataBuffer.size/dataBuffer.dataRate}
-      />
-      {windowSize} seconds 
+      <TimeReading dataBuffer = {dataBuffer} /> 
+      </div>
+      <br></br>
       {dataSlider} 
-      {initial_rate} Hz
       {dataBuffer.channelNames.slice(0,numPlots).map((_name, i) => (
         <TracePlot
           key={i}
@@ -346,7 +342,6 @@ type ScalarPaneProps = {
 };
 const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-  const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
   const [_initial_rate, _setDataRate] = useState(dataBuffer.dataRate);
   const [paused, setPaused] = useState(false);
 
@@ -355,23 +350,15 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
 
   return (
     <div>
+      <div style={{display: 'flex'}}>
       <Button onClick={() => setPaused(false)} disabled={!paused}>
         Start plotting
       </Button>
       <Button onClick={() => setPaused(true)} disabled={paused}>
         Pause plotting
       </Button>
-      <Slider
-        min={1}
-        max={400}
-        onChange={(n: number) => {
-          dataBuffer.setWindowSize(n*dataBuffer.dataRate);
-          setWindowSize(n);
-        }}
-        initial={windowSize}
-      />
-      {/* <SizeReading dataBuffer = {dataBuffer} /> */}
-      {windowSize} seconds <br></br>
+      <TimeReading dataBuffer = {dataBuffer} /> 
+      </div>
       <div style={{display: 'flex'}}>
       {dataBuffer.viewer_rpcs[index].map((name, i) => (
         <Reading name = {name} api = {API} dataBuffer = {dataBuffer} vindex = {index} rpcindex = {i}/>
@@ -395,30 +382,25 @@ const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
   );
 };
 
-const SizeReading = ({dataBuffer}: {dataBuffer: DataBuffer}) => {
-  const [size, setSize] = useState(dataBuffer.size/dataBuffer.dataRate);
+const TimeReading = ({dataBuffer}: {dataBuffer: DataBuffer}) => {
+  const [value, setValue] = useState(dataBuffer.size/dataBuffer.dataRate);
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    //console.log("running handle change");
-    setSize(e.target.size);
-  }
+    setValue(e.target.valueAsNumber);
+  };
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    dataBuffer.setWindowSize(size*dataBuffer.dataRate);
-    setSize(size);
     e.preventDefault();
+    await dataBuffer.setWindowSize(value*dataBuffer.dataRate);
   }
   return(
-    <form id = "windowSize" onSubmit = {handleSubmit} >
+    <form id = "timescale" onSubmit = {handleSubmit} >
     <p></p>
           <label>
-              Window Size:
-              &nbsp;
-              <input type="text" name="windowSize" value = {size} onChange = {handleChange} size = {5}/>
-              &nbsp;&nbsp;&nbsp;
+              Window Size: &nbsp;
+              <input type="number" name= "timescale" value = {value} onChange = {handleChange} size = {5}/>
+              &nbsp; Seconds
             </label>
     </form>
     )
-
-  
 }
 
 const Reading = ({name, api, dataBuffer, vindex, rpcindex}: {name: string, api: API, dataBuffer: DataBuffer, vindex: number, rpcindex: number}) => {
@@ -489,43 +471,30 @@ type LaserPaneProps = {
 };
 const LaserPane = ({ dataBuffer, api:API}: LaserPaneProps) => {
   (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-  const [windowSize, setWindowSize] = useState(dataBuffer.size/dataBuffer.dataRate);
-  const [initial_rate, setDataRate] = useState(dataBuffer.dataRate);
-  const [paused, _setPaused] = useState(false);
+  const [paused, setPaused] = useState(false);
   const colors = ["red", "green", "blue"];
   const index = dataBuffer.viewers.indexOf("Laser");
-  const needsRPC = true;//typeof window.__TAURI__ !== "undefined";
-  const dataSlider = needsRPC ? 
-  <Slider
-        min={20}
-        max={1000}
-        onChange={(n: number) => {
-          API.data_rate(n)
-          dataBuffer.setDataRate(n)
-          setDataRate(n)
-        }}
-        initial={initial_rate}
-      />
-      : null;
-  
   const laserMeasureIndex = dataBuffer.channelNames.indexOf("laser.measure");
   const laserOutputIndex = dataBuffer.channelNames.indexOf("laser.output");
   const supplyCurrentIndex = dataBuffer.channelNames.indexOf("supply.current");
 
   return (
     <div>
-      <Slider
-        min={1}
-        max={400}
-        onChange={(n: number) => {
-          dataBuffer.setWindowSize(n*dataBuffer.dataRate);
-          setWindowSize(n);
-        }}
-        initial={windowSize}
-      />
-      {windowSize} seconds
-      {dataSlider} 
-      {initial_rate} Hz
+      <div style={{display: 'flex'}}>
+      <Button onClick={() => setPaused(false)} disabled={!paused}>
+        Start plotting
+      </Button>
+      <Button onClick={() => setPaused(true)} disabled={paused}>
+        Pause plotting
+      </Button>
+      <TimeReading dataBuffer = {dataBuffer} /> 
+      </div>
+      <div style={{display: 'flex'}}>
+      {dataBuffer.viewer_rpcs[index].map((name, i) => (
+        <Reading name = {name} api = {API} dataBuffer = {dataBuffer} vindex = {index} rpcindex = {i}/>
+      ))
+      }
+      </div>
       {
         <TracePlot
           key={laserMeasureIndex}
@@ -576,15 +545,3 @@ const LaserPane = ({ dataBuffer, api:API}: LaserPaneProps) => {
   );
 };
 
-// type StatusProps = {
-//   api: API,
-//   dataBuffer: DataBuffer,
-//   numPlots: number,
-//   numNoise: number,
-//   status: string[],
-// }
-// const StatusProps = ({ dataBuffer, api:API, numPlots, numNoise, status}: StatusProps) => {
-//   if (status.includes("Scalar")) {
-
-//   }
-// })
