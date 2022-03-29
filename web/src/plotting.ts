@@ -142,6 +142,7 @@ export class DataBuffer {
    */
   spectrum = (channel: number, n = 4096): { amplitudes: number[]; freqs: number[] } => {
     const d = this.data[channel];
+    //TO DO: truncating at power of 2 number of points 
     const size = 2 ** Math.floor(Math.log2(Math.min(d.length, n)));
     const hz = this.dataRate;
     if (size < 1 || !hz) return { amplitudes: [], freqs: [] };
@@ -161,7 +162,7 @@ export class DataBuffer {
     for (let i = 1; i < size / 2; i++) {
       const re = out[2 * i];
       const im = out[2 * i + 1];
-      amplitudes.push(Math.log2(Math.sqrt(re * re + im * im)));
+      amplitudes.push(Math.sqrt(re * re + im * im));
       freqs.push((i * hz) / size);
     }
     // very naive way to make DC go away

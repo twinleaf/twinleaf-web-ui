@@ -220,6 +220,9 @@ export const CombinedSpectrumPlot = ({ dataBuffer, paused, num_field }: Combined
               return [initMin, initMax];
             },
           },
+          y: {
+            distr: 3,
+          }
         },
         legend: { show: true },
         series: [
