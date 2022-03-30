@@ -65,9 +65,9 @@ export const App = () => {
             </a>
           </h4>
         ) : activePane === "Scalar" && dataBuffer && dataBuffer.viewers.includes("Scalar") ? (
-          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["field", "field2"]} noisePlot = {true} noisePlotNum = {2} viewer = "Scalar" />
+          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["field", "field2", "gradient"]} noisePlot = {true} noisePlotNum = {2} viewer = "Scalar" />
         ) : activePane === "Vector" && dataBuffer && dataBuffer.viewers.includes("Vector") ? (
-          <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {3}/>
+          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["vector.x", "vector.y", "vector.z"]} noisePlot = {true} noisePlotNum = {2} viewer = "Scalar" />
         ) : activePane === "Heater" && dataBuffer && dataBuffer.viewers.includes("Heater") ? (
           <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {2}/>
         ) : activePane === "Laser" && dataBuffer && dataBuffer.viewers.includes("Laser") ? (
@@ -475,7 +475,7 @@ const ViewerPane = ({ dataBuffer, api:API, plots, noisePlot, noisePlotNum, viewe
         showTitle={false}
         showAxis={false}
         paused={paused}
-        height = {400}
+        height = {300}
     />
       ))}
       {NoisePlot}
