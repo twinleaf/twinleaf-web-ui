@@ -67,9 +67,9 @@ export const App = () => {
         ) : activePane === "Scalar" && dataBuffer && dataBuffer.viewers.includes("Scalar") ? (
           <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["field", "field2", "gradient"]} noisePlot = {true} noisePlotNum = {2} viewer = "Scalar" />
         ) : activePane === "Vector" && dataBuffer && dataBuffer.viewers.includes("Vector") ? (
-          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["vector.x", "vector.y", "vector.z"]} noisePlot = {true} noisePlotNum = {2} viewer = "Scalar" />
+          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["vector.x", "vector.y", "vector.z"]} noisePlot = {true} noisePlotNum = {2} viewer = "Vector" />
         ) : activePane === "Heater" && dataBuffer && dataBuffer.viewers.includes("Heater") ? (
-          <PlotPane dataBuffer={dataBuffer} api ={api} numPlots = {3} numNoise = {2}/>
+          <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["therm.measure", "therm.reference", "therm.output"]} noisePlot = {false} noisePlotNum = {0} viewer = "Heater" />
         ) : activePane === "Laser" && dataBuffer && dataBuffer.viewers.includes("Laser") ? (
           <ViewerPane dataBuffer={dataBuffer} api ={api} plots = {["laser.measure", "laser.output", "supply.current"]} noisePlot = {false} noisePlotNum = {0} viewer = "Laser" />
         ) : null}
@@ -448,7 +448,15 @@ const ViewerPane = ({ dataBuffer, api:API, plots, noisePlot, noisePlotNum, viewe
   const NoisePlot = noisePlot?
     <CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {noisePlotNum} />
     : null;
-  console.log(dataBuffer.viewer_rpcs[index])
+
+  const RPCs = (dataBuffer.viewer_rpcs.length > index) ? 
+    <div style={{display: 'flex'}}>
+      {dataBuffer.viewer_rpcs[index].map((name, i) => (
+        <Reading name = {name} api = {API} dataBuffer = {dataBuffer} vindex = {index} rpcindex = {i}/>
+      ))
+      }
+    </div>
+    : null;
   return (
     <div>
       <div style={{display: 'flex'}}>
@@ -460,12 +468,7 @@ const ViewerPane = ({ dataBuffer, api:API, plots, noisePlot, noisePlotNum, viewe
       </Button>
       <TimeReading dataBuffer = {dataBuffer} /> 
       </div>
-      <div style={{display: 'flex'}}>
-      {dataBuffer.viewer_rpcs[index].map((name, i) => (
-        <Reading name = {name} api = {API} dataBuffer = {dataBuffer} vindex = {index} rpcindex = {i}/>
-      ))
-      }
-      </div>
+      {RPCs}
       {plotIndices.map((i) => (
         <TracePlot
         key={i}
