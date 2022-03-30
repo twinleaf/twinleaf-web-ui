@@ -1063,12 +1063,11 @@ impl Device {
 
     pub fn status(&self) -> (Vec<String>, Vec<Vec<String>>, Vec<Vec<bool>>) {
         //Esme: read status (what viewers are available) from rpc, right now hard coded for testing purposes
-        if self.name() == "VMR" || self.name() == "OMG" {
+        if self.name() == "OMG" {
             let mut viewer_info = Vec::new();
             let mut viewers = Vec::new();
             viewers.push("Scalar".to_string());
             viewers.push("Laser".to_string());
-            viewers.push("Vector".to_string());
             viewers.push("Heater".to_string());
             let scalar_rpcs = vec!["data.rate".to_string(), "dev.name".to_string()];//,"bar.data.active".to_string(), "therm.data.active".to_string()];
             let laser_rpcs = vec!["dev.name".to_string()];
