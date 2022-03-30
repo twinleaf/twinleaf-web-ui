@@ -145,7 +145,6 @@ const Devices = (props: DevicesProps) => {
           <Table.HeaderCell width={6}></Table.HeaderCell>
         </Table.Row>
       </Table.Header>
-
       <Table.Body>
         {Object.keys(devices).map((id) => (
           <Table.Row key={id}>
@@ -276,7 +275,7 @@ const Slider = ({ min, max, onChange, initial }: SliderProps) => {
   );
 };
 
-
+//Esme: entry boxes for time reading, can use arrow keys and enter for number entry
 const TimeReading = ({dataBuffer}: {dataBuffer: DataBuffer}) => {
   const [value, setValue] = useState(dataBuffer.size/dataBuffer.dataRate);
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -298,6 +297,7 @@ const TimeReading = ({dataBuffer}: {dataBuffer: DataBuffer}) => {
     )
 }
 
+//Esme Reading for the RPC calls, likely a better format would be to make a general read function and then call it
 const Reading = ({name, api, dataBuffer, vindex, rpcindex}: {name: string, api: API, dataBuffer: DataBuffer, vindex: number, rpcindex: number}) => {
   const [enabled, setEnabled] = useState(true);
   useEffect(() => {
@@ -361,7 +361,7 @@ else {
 }
 
 
-//Esme: General plot setup, has the main plots (TracePlot) and noise plot (CombinedSpectrumPlot)
+//Esme: General plot setup for the main Plot page, has the main plots (TracePlot) and noise plot (CombinedSpectrumPlot)
 type PlotPaneProps = {
   dataBuffer: DataBuffer;
   api: API;
@@ -423,52 +423,8 @@ const PlotPane = ({ dataBuffer, api:API, numPlots, numNoise}: PlotPaneProps) => 
   );
 };
 
-type ScalarPaneProps = {
-  dataBuffer: DataBuffer;
-  api: API;
-};
-const ScalarPane = ({ dataBuffer, api:API}: ScalarPaneProps) => {
-  (window as any).plotBuffer = dataBuffer; // a way to debug an object interactively
-  const [_initial_rate, _setDataRate] = useState(dataBuffer.dataRate);
-  const [paused, setPaused] = useState(false);
-
-  const colors = ["red", "green", "blue"];
-  const index = dataBuffer.viewers.indexOf("Scalar");
-
-  return (
-    <div>
-      <div style={{display: 'flex'}}>
-      <Button onClick={() => setPaused(false)} disabled={!paused}>
-        Start plotting
-      </Button>
-      <Button onClick={() => setPaused(true)} disabled={paused}>
-        Pause plotting
-      </Button>
-      <TimeReading dataBuffer = {dataBuffer} /> 
-      </div>
-      <div style={{display: 'flex'}}>
-      {dataBuffer.viewer_rpcs[index].map((name, i) => (
-        <Reading name = {name} api = {API} dataBuffer = {dataBuffer} vindex = {index} rpcindex = {i}/>
-      ))
-      }
-      </div>
-      {dataBuffer.channelNames.slice(0,3).map((_name, i) => (
-        <TracePlot
-          key={i}
-          color={colors[i % colors.length]}
-          channelIndex={i}
-          dataBuffer={dataBuffer}
-          showTitle={i === 0}
-          showAxis={i == 2}
-          paused={paused}
-          height = {300}
-        />
-      ))}
-      {<CombinedSpectrumPlot dataBuffer={dataBuffer} paused={paused} num_field = {2} />}
-    </div>
-  );
-};
-
+//Esme: template for different "VIs", can customize it to have particular plots
+//Esme: the name of the viewer and the array of plot name strings are related so they probably don't both need to be arguments
 type ViewerPaneProps = {
   dataBuffer: DataBuffer;
   api: API;
