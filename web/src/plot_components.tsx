@@ -174,7 +174,8 @@ export const TracePlot = ({
     }}
     updatePlot={(u, dataBuffer, el) => {
       const xs = dataBuffer.getXs(false);
-      //console.log(xs.length);
+      //logging to see precision
+      console.log(xs);
       u.setData([xs, dataBuffer.data[channelIndex]], false);
       if (xs.length > 1) {
         u.setScale("x", { min: xs[0], max: xs[xs.length-1]});//xs[0] + (dataBuffer.size +1)/dataBuffer.dataRate});
